@@ -72,7 +72,7 @@ describe('Vercel deployment config', () => {
 });
 
 describe('serverless entry', () => {
-  it('serves the API and trusts exactly one proxy hop by default', async () => {
+  it('serves the API and trusts exactly one proxy hop', async () => {
     const app = createVercelApp(quiet);
     expect(app.get('trust proxy')).toBe(1);
     const health = await request(app).get('/api/health');
@@ -80,8 +80,12 @@ describe('serverless entry', () => {
     expect(health.headers['content-security-policy']).toContain("default-src 'self'");
   });
 
-  it('lets an explicit TRUST_PROXY_HOPS win', () => {
-    expect(createVercelApp({ ...quiet, TRUST_PROXY_HOPS: '2' }).get('trust proxy')).toBe(2);
+  it('pins trust to one hop even if a copied .env says otherwise', () => {
+    // Importing a local .env (TRUST_PROXY_HOPS=0) must not merge all visitors
+    // into one rate-limit bucket, and 2+ would allow IP spoofing.
+    for (const hops of ['0', '2']) {
+      expect(createVercelApp({ ...quiet, TRUST_PROXY_HOPS: hops }).get('trust proxy')).toBe(1);
+    }
   });
 
   it('re-exports the compiled entry from the function file', () => {
