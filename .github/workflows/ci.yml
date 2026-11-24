@@ -1,0 +1,33 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Lint
+        run: npm run lint
+      - name: Format
+        run: npm run format:check
+      - name: Type-check (server + browser JS)
+        run: npm run typecheck
+      - name: Tests with coverage thresholds
+        run: npm run test:coverage
+      - name: Production build
+        run: npm run build
+      - name: Dependency audit (production)
+        run: npm audit --omit=dev --audit-level=high

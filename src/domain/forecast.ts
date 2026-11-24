@@ -1,0 +1,92 @@
+import { calculateAqi } from './aqi/calculator.js';
+import { addHours, hourOf } from './time.js';
+import type { HourlyAir, HourlyIndex, SeverityLevel, StandardId, TimeWindow } from './types.js';
+
+/**
+ * Hour-by-hour index. Consumer decisions ("can we go out at 4 pm?") depend on
+ * the hourly exposure, so we apply the standard's breakpoints to hourly
+ * concentrations (as most consumer AQI apps do) rather than to 24-h averages.
+ */
+export function buildHourlyIndex(hours: readonly HourlyAir[], standard: StandardId): HourlyIndex[] {
+  const points: HourlyIndex[] = [];
+  for (const hour of hours) {
+    const reading = calculateAqi(hour.concentrations, standard);
+    if (!reading) continue;
+    points.push({
+      time: hour.time,
+      aqi: reading.value,
+      level: reading.category.level,
+      label: reading.category.label,
+    });
+  }
+  return points;
+}
+
+export interface WindowOptions {
+  /** Only consider hours whose clock hour is ≥ this value (0–23). */
+  earliestHour?: number;
+  /** Only consider hours whose clock hour is < this value (1–24). */
+  latestHour?: number;
+}
+
+const maxLevel = (points: readonly HourlyIndex[]): SeverityLevel =>
+  points.reduce<SeverityLevel>((acc, p) => (p.level > acc ? p.level : acc), 0);
+
+/**
+ * Sliding-window search (O(n·k), n ≤ 48) for the cleanest or most polluted
+ * contiguous block of `durationHours`. Ties resolve to the earliest window.
+ */
+export function findWindow(
+  points: readonly HourlyIndex[],
+  durationHours: number,
+  mode: 'best' | 'worst',
+  options: WindowOptions = {},
+): TimeWindow | null {
+  const { earliestHour = 0, latestHour = 24 } = options;
+  const allowed = (p: HourlyIndex): boolean => {
+    const hour = hourOf(p.time);
+    return hour >= earliestHour && hour < latestHour;
+  };
+
+  let best: { slice: HourlyIndex[]; average: number } | null = null;
+  for (let i = 0; i + durationHours <= points.length; i += 1) {
+    const slice = points.slice(i, i + durationHours);
+    if (!slice.every(allowed)) continue;
+    const average = slice.reduce((sum, p) => sum + p.aqi, 0) / slice.length;
+    const better =
+      best === null || (mode === 'best' ? average < best.average : average > best.average);
+    if (better) best = { slice, average };
+  }
+
+  if (!best) return null;
+  const first = best.slice[0];
+  const last = best.slice[best.slice.length - 1];
+  if (!first || !last) return null;
+  return {
+    start: first.time,
+    end: addHours(last.time, 1),
+    averageAqi: Math.round(best.average),
+    peakAqi: Math.max(...best.slice.map((p) => p.aqi)),
+    level: maxLevel(best.slice),
+  };
+}
+
+export interface Trend {
+  direction: 'improving' | 'worsening' | 'stable';
+  /** Current hourly AQI. */
+  now: number;
+  /** Average AQI over the look-ahead period. */
+  next: number;
+  lookaheadHours: number;
+}
+
+/** Compare "now" with the average of the next few hours (±10 % counts as stable). */
+export function describeTrend(points: readonly HourlyIndex[], lookaheadHours = 6): Trend | null {
+  const current = points[0];
+  const upcoming = points.slice(1, 1 + lookaheadHours);
+  if (!current || upcoming.length === 0) return null;
+  const next = Math.round(upcoming.reduce((s, p) => s + p.aqi, 0) / upcoming.length);
+  const change = (next - current.aqi) / Math.max(current.aqi, 1);
+  const direction = change <= -0.1 ? 'improving' : change >= 0.1 ? 'worsening' : 'stable';
+  return { direction, now: current.aqi, next, lookaheadHours: upcoming.length };
+}

@@ -1,0 +1,374 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>AirWise · Urban Air Quality Assistant for families</title>
+    <meta
+      name="description"
+      content="GenAI assistant that helps families and communities get through winter smog: low-emission daily routines, indoor air hacks and sustainable choices, with the impact of each choice in numbers."
+    />
+    <meta name="theme-color" content="#0b5d4b" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="stylesheet" href="/css/styles.css" />
+    <script type="module" src="/js/main.js"></script>
+  </head>
+  <body>
+    <a class="skip-link" href="#main">Skip to main content</a>
+
+    <header class="site-header">
+      <div class="brand">
+        <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true" focusable="false">
+          <circle cx="16" cy="16" r="15" />
+          <path d="M7 19c4-6 7 2 11-3s6-2 7-1M7 13c4-4 6 1 9-2" />
+        </svg>
+        <span class="brand-name">AirWise</span>
+      </div>
+      <p class="tagline">Your family's guide through winter smog</p>
+    </header>
+
+    <main id="main" tabindex="-1">
+      <section class="panel intro" aria-labelledby="setup-heading">
+        <h1 id="setup-heading">Plan a cleaner-air day for your family</h1>
+        <p class="lede">
+          Tell AirWise where you live and how your household lives. It reads the live air-quality
+          and weather forecast, then builds a low-emission routine, indoor-air fixes and greener
+          choices, showing what each one changes in numbers.
+        </p>
+
+        <form
+          id="place-form"
+          class="place-form"
+          role="search"
+          aria-label="Find your city"
+          novalidate
+        >
+          <label for="place-input">City or neighbourhood</label>
+          <div class="input-row">
+            <input
+              id="place-input"
+              name="q"
+              type="search"
+              autocomplete="off"
+              spellcheck="false"
+              minlength="2"
+              maxlength="80"
+              required
+              aria-describedby="place-hint"
+            />
+            <button type="submit">Search</button>
+            <button type="button" id="geo-button" class="secondary">Use my location</button>
+          </div>
+          <p id="place-hint" class="hint">Try "Delhi", "Lucknow", "Kolkata" or your own city.</p>
+          <ul id="place-results" class="place-results" aria-label="Matching places" hidden></ul>
+        </form>
+
+        <p id="current-place" class="current-place" hidden></p>
+
+        <details id="profile-details" class="profile" open>
+          <summary>Your household and lifestyle</summary>
+          <form id="profile-form" class="profile-form" novalidate>
+            <fieldset>
+              <legend>Who lives with you?</legend>
+              <div class="grid-3">
+                <label
+                  >Adults (18–59)<input
+                    name="adults"
+                    type="number"
+                    min="0"
+                    max="20"
+                    step="1"
+                    inputmode="numeric"
+                    required
+                /></label>
+                <label
+                  >Children (under 18)<input
+                    name="children"
+                    type="number"
+                    min="0"
+                    max="20"
+                    step="1"
+                    inputmode="numeric"
+                    required
+                /></label>
+                <label
+                  >Older adults (60+)<input
+                    name="seniors"
+                    type="number"
+                    min="0"
+                    max="20"
+                    step="1"
+                    inputmode="numeric"
+                    required
+                /></label>
+              </div>
+            </fieldset>
+
+            <fieldset>
+              <legend>Health conditions at home <span class="optional">(optional)</span></legend>
+              <div class="checks">
+                <label><input type="checkbox" name="conditions" value="asthma" /> Asthma</label>
+                <label
+                  ><input type="checkbox" name="conditions" value="copd" /> COPD / chronic
+                  bronchitis</label
+                >
+                <label
+                  ><input type="checkbox" name="conditions" value="heart_disease" /> Heart
+                  disease</label
+                >
+                <label><input type="checkbox" name="conditions" value="diabetes" /> Diabetes</label>
+                <label
+                  ><input type="checkbox" name="conditions" value="pregnancy" /> Pregnancy</label
+                >
+                <label
+                  ><input type="checkbox" name="conditions" value="allergies" /> Allergies</label
+                >
+              </div>
+            </fieldset>
+
+            <fieldset>
+              <legend>Daily life</legend>
+              <div class="grid-2">
+                <label
+                  >Main commute
+                  <select name="commuteMode">
+                    <option value="two_wheeler">Motorbike / scooter</option>
+                    <option value="car_petrol">Petrol car</option>
+                    <option value="car_diesel">Diesel car</option>
+                    <option value="car_cng">CNG car</option>
+                    <option value="ev_car">Electric car</option>
+                    <option value="auto_rickshaw">Auto-rickshaw</option>
+                    <option value="bus">Bus</option>
+                    <option value="metro">Metro / local train</option>
+                    <option value="bicycle">Bicycle</option>
+                    <option value="walk">Walk</option>
+                    <option value="none">No regular commute</option>
+                  </select>
+                </label>
+                <label
+                  >One-way distance (km)
+                  <input
+                    name="commuteKm"
+                    type="number"
+                    min="0"
+                    max="200"
+                    step="0.5"
+                    inputmode="decimal"
+                    required
+                  />
+                </label>
+                <label
+                  >Cooking fuel
+                  <select name="cookingFuel">
+                    <option value="lpg">LPG cylinder</option>
+                    <option value="piped_gas">Piped gas (PNG)</option>
+                    <option value="electric">Induction / electric</option>
+                    <option value="biomass">Wood, dung or crop waste</option>
+                    <option value="kerosene">Kerosene</option>
+                  </select>
+                </label>
+                <label
+                  >Winter heating
+                  <select name="heating">
+                    <option value="none">None</option>
+                    <option value="electric">Electric heater</option>
+                    <option value="gas">Gas heater</option>
+                    <option value="wood_or_coal">Coal or wood (angithi)</option>
+                    <option value="kerosene">Kerosene heater</option>
+                  </select>
+                </label>
+              </div>
+              <div class="checks">
+                <label
+                  ><input type="checkbox" name="workFromHomePossible" /> I can work from home some
+                  days</label
+                >
+                <label
+                  ><input type="checkbox" name="exercisesOutdoors" /> Someone exercises outdoors
+                  most days</label
+                >
+              </div>
+            </fieldset>
+
+            <fieldset>
+              <legend>Home</legend>
+              <div class="grid-2">
+                <label
+                  >Main room size (m²)
+                  <input
+                    name="roomAreaSqm"
+                    type="number"
+                    min="4"
+                    max="200"
+                    step="1"
+                    inputmode="numeric"
+                    required
+                    aria-describedby="room-hint"
+                  />
+                </label>
+                <label
+                  >Purifier CADR (m³/h)
+                  <input
+                    name="purifierCadrM3h"
+                    type="number"
+                    min="0"
+                    max="2000"
+                    step="10"
+                    inputmode="numeric"
+                    aria-describedby="cadr-hint"
+                  />
+                </label>
+              </div>
+              <p id="room-hint" class="hint">
+                The room where the family sleeps or spends most time. A 3 m × 4 m bedroom is 12 m².
+              </p>
+              <label class="inline"
+                ><input type="checkbox" name="hasAirPurifier" /> We have an air purifier</label
+              >
+              <p id="cadr-hint" class="hint">
+                CADR is printed on the purifier box. Leave 0 if unknown.
+              </p>
+            </fieldset>
+
+            <fieldset>
+              <legend>Community</legend>
+              <label
+                >Households acting together
+                <input
+                  name="communityHouseholds"
+                  type="number"
+                  min="1"
+                  max="10000"
+                  step="1"
+                  inputmode="numeric"
+                  required
+                  aria-describedby="community-hint"
+                />
+              </label>
+              <p id="community-hint" class="hint">
+                E.g. your apartment society or street. We multiply the impact of each action.
+              </p>
+            </fieldset>
+
+            <label class="standard-select"
+              >AQI scale
+              <select name="standard">
+                <option value="auto">Automatic (India NAQI in India, US AQI elsewhere)</option>
+                <option value="in">India National AQI (CPCB)</option>
+                <option value="us">US EPA AQI</option>
+              </select>
+            </label>
+
+            <p class="privacy-note">
+              Saved only in this browser. Health details are sent only to work out your advice and
+              are never stored on our server.
+            </p>
+            <p id="profile-error" class="form-error" role="alert" hidden></p>
+            <button type="submit">Update my plan</button>
+          </form>
+        </details>
+      </section>
+
+      <p id="status" class="status" role="status" aria-live="polite"></p>
+
+      <div id="results" class="results" hidden>
+        <nav class="section-nav" aria-label="Plan sections">
+          <ul>
+            <li><a href="#now">Air now</a></li>
+            <li><a href="#family">Family</a></li>
+            <li><a href="#routine">Routine</a></li>
+            <li><a href="#indoor">Indoors</a></li>
+            <li><a href="#impact">Impact</a></li>
+            <li><a href="#assistant">Ask</a></li>
+          </ul>
+        </nav>
+
+        <section id="now" class="card" aria-labelledby="now-heading" tabindex="-1">
+          <h2 id="now-heading">Air right now</h2>
+          <div id="now-body"></div>
+        </section>
+
+        <section id="family" class="card" aria-labelledby="family-heading">
+          <h2 id="family-heading">What it means for your family</h2>
+          <div id="family-body"></div>
+        </section>
+
+        <section id="forecast" class="card" aria-labelledby="forecast-heading">
+          <h2 id="forecast-heading">Next 24 hours and the smog trap</h2>
+          <div id="forecast-body"></div>
+        </section>
+
+        <section id="routine" class="card" aria-labelledby="routine-heading">
+          <h2 id="routine-heading">Today's low-emission, low-exposure routine</h2>
+          <div id="routine-body"></div>
+        </section>
+
+        <section id="indoor" class="card" aria-labelledby="indoor-heading">
+          <h2 id="indoor-heading">Indoor air hacks</h2>
+          <div id="indoor-body"></div>
+        </section>
+
+        <section id="impact" class="card" aria-labelledby="impact-heading">
+          <h2 id="impact-heading">Sustainable alternatives and their impact</h2>
+          <div id="impact-body"></div>
+        </section>
+
+        <div class="share-row">
+          <button type="button" id="share-button" class="secondary">
+            Share today's plan with family
+          </button>
+          <button type="button" id="speak-button" class="secondary" hidden>
+            Read summary aloud
+          </button>
+        </div>
+      </div>
+
+      <section id="assistant" class="card chat" aria-labelledby="chat-heading">
+        <h2 id="chat-heading">Ask AirWise</h2>
+        <p id="chat-mode" class="hint">
+          Choose a place above, then ask anything about your air, home or choices.
+        </p>
+        <div
+          id="chat-log"
+          class="chat-log"
+          role="log"
+          aria-live="polite"
+          aria-label="Conversation"
+        ></div>
+        <div
+          id="chat-suggestions"
+          class="chips"
+          role="group"
+          aria-label="Suggested questions"
+        ></div>
+        <form id="chat-form" class="chat-form" novalidate>
+          <label for="chat-input" class="visually-hidden">Your question</label>
+          <textarea
+            id="chat-input"
+            name="message"
+            rows="2"
+            maxlength="600"
+            required
+            placeholder="e.g. Can my kids play outside this evening?"
+          ></textarea>
+          <button type="submit" id="chat-send">Send</button>
+        </form>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <p>
+        Live data:
+        <a href="https://open-meteo.com/" rel="noopener noreferrer">Open-Meteo</a> (Copernicus CAMS
+        air quality, weather models). Impact figures are transparent estimates; see the README for
+        every factor and source.
+      </p>
+      <p>
+        AirWise gives general guidance, not medical advice. In an emergency in India call 112 or
+        108.
+      </p>
+      <noscript><p>AirWise needs JavaScript to fetch live air-quality data.</p></noscript>
+    </footer>
+  </body>
+</html>

@@ -1,0 +1,10 @@
+{
+  "name": "AirWise · Urban Air Quality Assistant",
+  "short_name": "AirWise",
+  "description": "Family guide through winter smog: routines, indoor air hacks and sustainable choices with measurable impact.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f6f8f7",
+  "theme_color": "#0b5d4b",
+  "icons": [{ "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml" }]
+}
