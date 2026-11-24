@@ -9,3 +9,11 @@ coverage/
 Thumbs.db
 .vscode/
 .idea/
+
+# Personal files that must never be published
+*.voicebox
+*.voicebox/
+*.voicebox.zip
+
+# Vercel local state
+.vercel/

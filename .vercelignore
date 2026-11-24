@@ -1,0 +1,11 @@
+# Allow-list: upload only what the deployment needs. Everything else, including
+# .env (secrets), personal files, tests and build artefacts, stays local.
+/*
+!api
+!src
+!public
+!package.json
+!package-lock.json
+!tsconfig.json
+!tsconfig.build.json
+!vercel.json

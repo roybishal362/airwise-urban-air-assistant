@@ -1,9 +1,10 @@
+import type { Express } from 'express';
 import { existsSync } from 'node:fs';
 import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { pathToFileURL } from 'node:url';
 import { createApp } from './app.js';
-import { loadConfig } from './config.js';
+import { loadConfig, type AppConfig } from './config.js';
 import { createLogger, type Logger } from './lib/logger.js';
 import { createAssistant } from './services/assistant/assistantService.js';
 import { selectProvider } from './services/assistant/llm.js';
@@ -18,14 +19,27 @@ export interface RunningServer {
   close(): Promise<void>;
 }
 
+export interface ComposedApp {
+  app: Express;
+  config: AppConfig;
+  logger: Logger;
+  assistantMode: string;
+}
+
+export interface Overrides {
+  client?: OpenMeteoClient;
+  stations?: StationClient | null;
+}
+
 /**
- * Compose the real dependencies and start listening. Exported (instead of
- * running on import) so tests can boot the production wiring on a free port.
+ * Build the production app from environment variables. Shared by the
+ * long-running server below and the serverless entry (`src/vercel.ts`), so
+ * both run exactly the same wiring. Throws on invalid configuration.
  */
-export async function startServer(
+export function composeApp(
   env: NodeJS.ProcessEnv = process.env,
-  overrides: { client?: OpenMeteoClient; stations?: StationClient | null } = {},
-): Promise<RunningServer> {
+  overrides: Overrides = {},
+): ComposedApp {
   const config = loadConfig(env);
   const logger = createLogger(config.logLevel);
   const briefService = createBriefService({
@@ -47,6 +61,18 @@ export async function startServer(
     rateLimitPerMinute: config.rateLimitPerMinute,
     chatRateLimitPerMinute: config.chatRateLimitPerMinute,
   });
+  return { app, config, logger, assistantMode: assistant.mode };
+}
+
+/**
+ * Compose the real dependencies and start listening. Exported (instead of
+ * running on import) so tests can boot the production wiring on a free port.
+ */
+export async function startServer(
+  env: NodeJS.ProcessEnv = process.env,
+  overrides: Overrides = {},
+): Promise<RunningServer> {
+  const { app, config, logger, assistantMode } = composeApp(env, overrides);
 
   return new Promise((resolve, reject) => {
     const server = app.listen(config.port);
@@ -55,7 +81,7 @@ export async function startServer(
       const { port } = server.address() as AddressInfo;
       logger.info('AirWise listening', {
         port,
-        assistant: assistant.mode,
+        assistant: assistantMode,
         stations: config.openAqApiKey ? 'openaq' : 'model-only',
         env: config.env,
       });
