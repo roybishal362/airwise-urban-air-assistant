@@ -279,7 +279,7 @@ describe('configuration', () => {
     });
     expect(config.llm).toMatchObject({
       provider: 'auto',
-      geminiModel: 'gemini-flash-latest',
+      geminiModel: 'gemini-3.5-flash-lite,gemini-3.8-flash',
       anthropicModel: 'claude-opus-5-5',
     });
     expect(config.llm.geminiApiKey).toBeUndefined();

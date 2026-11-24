@@ -7,6 +7,7 @@ import { planToText, renderBrief } from './render.js';
 import { loadPlace, loadProfile, savePlace, saveProfile } from './storage.js';
 
 /** @typedef {import('./storage.js').Place} Place */
+/** @typedef {import('../../src/domain/brief.js').AirBrief} AirBrief */
 
 const ui = {
   placeForm: byId('place-form', HTMLFormElement),
@@ -37,7 +38,7 @@ const state = {
   profile: loadProfile(localStorage),
   /** @type {Place | null} */
   place: loadPlace(localStorage),
-  /** @type {any} */
+  /** @type {AirBrief | null} */
   brief: null,
 };
 
@@ -64,15 +65,17 @@ async function loadBrief({ focusResults = false } = {}) {
   setStatus(`Fetching live air and weather data for ${place.name}…`);
   ui.results.setAttribute('aria-busy', 'true');
   try {
-    state.brief = await fetchBrief({
+    /** @type {AirBrief} */
+    const brief = await fetchBrief({
       location: place,
       standard: state.profile.standard,
       household: state.profile.household,
     });
-    renderBrief(state.brief, targets);
+    state.brief = brief;
+    renderBrief(brief, targets);
     ui.results.hidden = false;
     setStatus(
-      `Plan ready for ${place.name}: ${state.brief.current.category.label}, AQI ${state.brief.current.aqi}.`,
+      `Plan ready for ${place.name}: ${brief.current.category.label}, AQI ${brief.current.aqi}.`,
     );
     if (focusResults) ui.nowSection.focus();
   } catch (error) {
@@ -92,7 +95,7 @@ function choosePlace(place) {
   void loadBrief({ focusResults: true });
 }
 
-/** @param {any} p */
+/** @param {Place} p */
 const placeLabel = (p) => [p.name, p.region, p.country].filter(Boolean).join(', ');
 
 ui.placeForm.addEventListener('submit', async (event) => {
@@ -115,7 +118,7 @@ ui.placeForm.addEventListener('submit', async (event) => {
     }
     replaceChildren(
       ui.placeResults,
-      places.map((/** @type {any} */ p) => {
+      places.map((/** @type {Place} */ p) => {
         const button = el('button', {
           type: 'button',
           className: 'place-option',

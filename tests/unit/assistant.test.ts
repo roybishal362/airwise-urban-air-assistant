@@ -13,7 +13,9 @@ import {
   MAX_REPLY_CHARS,
   createClaudeProvider,
   createGeminiProvider,
+  parseModelChain,
   selectProvider,
+  shouldTryNextModel,
   type ClaudeMessagesApi,
   type GeminiModelsApi,
   type LlmProvider,
@@ -161,15 +163,17 @@ describe('rule-based answers', () => {
 });
 
 describe('Gemini provider', () => {
-  it('maps roles and passes the system instruction', async () => {
+  const statusError = (status: number) => Object.assign(new Error(`HTTP ${status}`), { status });
+
+  it('maps roles, passes the system instruction and enforces a deadline', async () => {
     const generateContent = vi.fn<GeminiModelsApi['generateContent']>(async () => ({
       text: '  Stay indoors.  ',
     }));
     const provider = createGeminiProvider({
       apiKey: 'k',
-      model: 'gemini-test',
+      models: ['gemini-test'],
       timeoutMs: 1000,
-      models: { generateContent },
+      client: { generateContent },
     });
     const reply = await provider.generate('SYS', [
       { role: 'user', content: 'q1' },
@@ -180,28 +184,88 @@ describe('Gemini provider', () => {
     const params = generateContent.mock.calls[0]?.[0];
     expect(params?.model).toBe('gemini-test');
     expect(params?.config.systemInstruction).toBe('SYS');
+    expect(params?.config.abortSignal).toBeInstanceOf(AbortSignal);
     expect(params?.contents.map((c) => c.role)).toEqual(['user', 'model', 'user']);
+  });
+
+  it('falls through the model chain when a model is retired, overloaded or slow', async () => {
+    const timeout = Object.assign(new Error('deadline'), { name: 'TimeoutError' });
+    const generateContent = vi
+      .fn<GeminiModelsApi['generateContent']>()
+      .mockRejectedValueOnce(statusError(404))
+      .mockRejectedValueOnce(statusError(503))
+      .mockRejectedValueOnce(timeout)
+      .mockResolvedValueOnce({ text: 'Fourth model answered.' });
+    const provider = createGeminiProvider({
+      apiKey: 'k',
+      models: ['retired', 'busy', 'slow', 'healthy'],
+      timeoutMs: 1000,
+      client: { generateContent },
+    });
+    expect(await provider.generate('s', [])).toBe('Fourth model answered.');
+    expect(generateContent.mock.calls.map((c) => c[0].model)).toEqual([
+      'retired',
+      'busy',
+      'slow',
+      'healthy',
+    ]);
+  });
+
+  it('stops immediately on auth or request errors and reports the last failure', async () => {
+    const auth = vi.fn<GeminiModelsApi['generateContent']>().mockRejectedValue(statusError(401));
+    const provider = createGeminiProvider({
+      apiKey: 'k',
+      models: ['a', 'b'],
+      timeoutMs: 1000,
+      client: { generateContent: auth },
+    });
+    await expect(provider.generate('s', [])).rejects.toMatchObject({ status: 401 });
+    expect(auth).toHaveBeenCalledOnce();
+
+    const allBusy = createGeminiProvider({
+      apiKey: 'k',
+      models: ['a', 'b'],
+      timeoutMs: 1000,
+      client: { generateContent: async () => Promise.reject(statusError(503)) },
+    });
+    await expect(allBusy.generate('s', [])).rejects.toMatchObject({ status: 503 });
   });
 
   it('treats empty output as unavailable and caps long output', async () => {
     const empty = createGeminiProvider({
       apiKey: 'k',
-      model: 'm',
+      models: ['m'],
       timeoutMs: 1,
-      models: { generateContent: async () => ({}) },
+      client: { generateContent: async () => ({}) },
     });
     await expect(empty.generate('s', [])).rejects.toBeInstanceOf(LlmUnavailableError);
     const long = createGeminiProvider({
       apiKey: 'k',
-      model: 'm',
+      models: ['m'],
       timeoutMs: 1,
-      models: { generateContent: async () => ({ text: 'x'.repeat(9999) }) },
+      client: { generateContent: async () => ({ text: 'x'.repeat(9999) }) },
     });
     expect(await long.generate('s', [])).toHaveLength(MAX_REPLY_CHARS);
   });
 
+  it('classifies errors for the fallback chain', () => {
+    expect(shouldTryNextModel(statusError(429))).toBe(true);
+    expect(shouldTryNextModel(statusError(400))).toBe(false);
+    expect(shouldTryNextModel(Object.assign(new Error('x'), { name: 'AbortError' }))).toBe(true);
+    expect(shouldTryNextModel(new LlmUnavailableError('empty'))).toBe(true);
+    expect(shouldTryNextModel('nope')).toBe(false);
+    expect(shouldTryNextModel(new Error('plain'))).toBe(false);
+  });
+
+  it('parses the configured model chain and requires at least one model', () => {
+    expect(parseModelChain(' a , b,,c ')).toEqual(['a', 'b', 'c']);
+    expect(() => createGeminiProvider({ apiKey: 'k', models: [], timeoutMs: 1 })).toThrow();
+  });
+
   it('constructs a real SDK client when none is injected', () => {
-    expect(createGeminiProvider({ apiKey: 'k', model: 'm', timeoutMs: 1000 }).name).toBe('gemini');
+    expect(createGeminiProvider({ apiKey: 'k', models: ['m'], timeoutMs: 1000 }).name).toBe(
+      'gemini',
+    );
   });
 });
 

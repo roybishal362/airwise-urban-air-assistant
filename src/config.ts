@@ -17,10 +17,10 @@ const envSchema = z.object({
   CHAT_RATE_LIMIT_PER_MINUTE: z.coerce.number().int().min(1).max(1000).default(10),
   LLM_PROVIDER: z.enum(['auto', 'gemini', 'claude', 'none']).default('auto'),
   GEMINI_API_KEY: optionalSecret,
-  GEMINI_MODEL: z.string().trim().min(1).default('gemini-flash-latest'),
+  GEMINI_MODEL: z.string().trim().min(1).default('gemini-3.5-flash-lite,gemini-3.8-flash'),
   ANTHROPIC_API_KEY: optionalSecret,
   ANTHROPIC_MODEL: z.string().trim().min(1).default('claude-opus-5-5'),
-  LLM_TIMEOUT_MS: z.coerce.number().int().min(1000).max(60_000).default(20_000),
+  LLM_TIMEOUT_MS: z.coerce.number().int().min(1000).max(60_000).default(12_000),
 });
 
 export interface AppConfig {

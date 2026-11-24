@@ -30,31 +30,73 @@ export interface GeminiModelsApi {
   generateContent(params: {
     model: string;
     contents: { role: 'user' | 'model'; parts: { text: string }[] }[];
-    config: { systemInstruction: string; maxOutputTokens: number };
+    config: { systemInstruction: string; maxOutputTokens: number; abortSignal?: AbortSignal };
   }): Promise<{ text?: string | undefined }>;
+}
+
+/** HTTP statuses that mean "this model can't serve right now, try the next one". */
+const NEXT_MODEL_STATUSES: ReadonlySet<number> = new Set([404, 408, 429, 500, 502, 503, 504]);
+
+/**
+ * Model availability changes over time (models are retired, or overloaded at
+ * peak). Retired/overloaded/timed-out models fall through to the next model in
+ * the chain; auth or request errors (400/401/403) stop immediately.
+ */
+export function shouldTryNextModel(error: unknown): boolean {
+  if (error instanceof LlmUnavailableError) return true;
+  if (typeof error !== 'object' || error === null) return false;
+  if ('name' in error && (error.name === 'AbortError' || error.name === 'TimeoutError'))
+    return true;
+  return (
+    'status' in error && typeof error.status === 'number' && NEXT_MODEL_STATUSES.has(error.status)
+  );
+}
+
+/** `"a, b"` → `["a", "b"]` (the GEMINI_MODEL setting is an ordered fallback chain). */
+export function parseModelChain(value: string): string[] {
+  return value
+    .split(',')
+    .map((m) => m.trim())
+    .filter((m) => m.length > 0);
 }
 
 export function createGeminiProvider(options: {
   apiKey: string;
-  model: string;
+  /** Ordered fallback chain, fastest/cheapest first. */
+  models: readonly string[];
   timeoutMs: number;
-  models?: GeminiModelsApi;
+  client?: GeminiModelsApi;
 }): LlmProvider {
-  const models: GeminiModelsApi =
-    options.models ??
-    new GoogleGenAI({ apiKey: options.apiKey, httpOptions: { timeout: options.timeoutMs } }).models;
+  if (options.models.length === 0) throw new Error('At least one Gemini model is required');
+  const client: GeminiModelsApi =
+    options.client ?? new GoogleGenAI({ apiKey: options.apiKey }).models;
   return {
     name: 'gemini',
     async generate(system, turns) {
-      const response = await models.generateContent({
-        model: options.model,
-        contents: turns.map((t) => ({
-          role: t.role === 'assistant' ? 'model' : 'user',
-          parts: [{ text: t.content }],
-        })),
-        config: { systemInstruction: system, maxOutputTokens: 2048 },
-      });
-      return finalise(response.text);
+      const contents = turns.map((t) => ({
+        role: t.role === 'assistant' ? ('model' as const) : ('user' as const),
+        parts: [{ text: t.content }],
+      }));
+      let lastError: unknown = new LlmUnavailableError('No Gemini model available');
+      for (const model of options.models) {
+        try {
+          const response = await client.generateContent({
+            model,
+            contents,
+            config: {
+              systemInstruction: system,
+              maxOutputTokens: 2048,
+              // Hard per-model deadline, independent of SDK-level retries.
+              abortSignal: AbortSignal.timeout(options.timeoutMs),
+            },
+          });
+          return finalise(response.text);
+        } catch (error) {
+          if (!shouldTryNextModel(error)) throw error;
+          lastError = error;
+        }
+      }
+      throw lastError;
     },
   };
 }
@@ -123,7 +165,7 @@ export function selectProvider(config: LlmConfig): LlmProvider | null {
     config.geminiApiKey
       ? createGeminiProvider({
           apiKey: config.geminiApiKey,
-          model: config.geminiModel,
+          models: parseModelChain(config.geminiModel),
           timeoutMs: config.timeoutMs,
         })
       : null;

@@ -11,9 +11,12 @@ import {
 } from './format.js';
 
 /**
- * Renders the AirBrief returned by POST /api/brief. The brief's shape is
- * defined by `AirBrief` in src/domain/brief.ts; it is typed loosely here.
- * @typedef {any} Brief
+ * Renders the AirBrief returned by POST /api/brief. Types come straight from
+ * the server's domain model, so `npm run typecheck` fails if the API contract
+ * and the UI ever drift apart.
+ * @typedef {import('../../src/domain/brief.js').AirBrief} Brief
+ * @typedef {import('../../src/domain/types.js').TimeWindow} TimeWindow
+ * @typedef {import('../../src/domain/impact.js').ModeImpact} ModeImpact
  */
 
 const PRIORITY_LABEL = /** @type {Record<number, string>} */ ({
@@ -66,7 +69,7 @@ export function renderNow(brief) {
     el(
       'tbody',
       {},
-      current.pollutants.map((/** @type {any} */ p) =>
+      current.pollutants.map((p) =>
         el(
           'tr',
           { className: p.id === current.dominantPollutant ? 'dominant' : undefined },
@@ -124,9 +127,7 @@ export function renderFamily(brief) {
     el(
       'ul',
       { className: 'member-advice' },
-      risk.memberAdvice.map((/** @type {any} */ m) =>
-        el('li', {}, el('strong', { text: `${m.who}: ` }), m.advice),
-      ),
+      risk.memberAdvice.map((m) => el('li', {}, el('strong', { text: `${m.who}: ` }), m.advice)),
     ),
   ];
 }
@@ -143,11 +144,11 @@ export function dayWord(time, reference) {
 /** @param {Brief} brief */
 export function renderForecast(brief) {
   const { hours, windows } = brief.forecast;
-  const peak = Math.max(100, ...hours.map((/** @type {any} */ h) => h.aqi));
+  const peak = Math.max(100, ...hours.map((h) => h.aqi));
   const bars = el(
     'ol',
     { className: 'bars', 'aria-label': 'Hourly air quality for the next 24 hours' },
-    hours.map((/** @type {any} */ h, /** @type {number} */ i) => {
+    hours.map((h, i) => {
       const bar = el('span', { className: `bar lvl-${h.level}`, 'aria-hidden': 'true' });
       bar.style.setProperty('--h', `${Math.max(4, Math.round((h.aqi / peak) * 100))}%`);
       return el(
@@ -169,7 +170,7 @@ export function renderForecast(brief) {
     }),
   );
 
-  /** @param {string} label @param {any} w @param {string} none */
+  /** @param {string} label @param {TimeWindow | null} w @param {string} none */
   const windowItem = (label, w, none) =>
     el(
       'li',
@@ -215,7 +216,7 @@ export function renderRoutine(brief) {
     el(
       'ol',
       { className: 'timeline' },
-      brief.routine.map((/** @type {any} */ step) =>
+      brief.routine.map((step) =>
         el(
           'li',
           {},
@@ -273,7 +274,7 @@ export function renderIndoor(brief) {
         el('td', { text: indoor.baselineIndoorPm25 }),
         el('td', { text: '—' }),
       ),
-      indoor.options.map((/** @type {any} */ o) =>
+      indoor.options.map((o) =>
         el(
           'tr',
           {},
@@ -289,7 +290,7 @@ export function renderIndoor(brief) {
     el(
       'ul',
       { className: 'hacks' },
-      indoor.hacks.map((/** @type {any} */ h) =>
+      indoor.hacks.map((h) =>
         el(
           'li',
           { className: `hack p${h.priority}` },
@@ -309,7 +310,11 @@ export function renderImpact(brief) {
   const parts = [];
   const { commute, actions, communityHouseholds } = brief;
   if (commute) {
-    const rows = [{ ...commute.current, current: true }, ...commute.alternatives];
+    /** @type {(ModeImpact & { current: boolean, inhaledChangePct: number, suitableToday: boolean })[]} */
+    const rows = [
+      { ...commute.current, current: true, inhaledChangePct: 0, suitableToday: true },
+      ...commute.alternatives.map((alt) => ({ ...alt, current: false })),
+    ];
     parts.push(
       el(
         'table',
@@ -333,7 +338,7 @@ export function renderImpact(brief) {
         el(
           'tbody',
           {},
-          rows.map((/** @type {any} */ r) =>
+          rows.map((r) =>
             el(
               'tr',
               { className: r.current ? 'current' : undefined },
@@ -360,7 +365,7 @@ export function renderImpact(brief) {
     el(
       'ul',
       { className: 'actions' },
-      actions.map((/** @type {any} */ a) => {
+      actions.map((a) => {
         const q = community ? a.community : a.perHousehold;
         const figures = [
           q.co2KgPerYear !== null ? `${formatCo2(q.co2KgPerYear)} / year` : null,
