@@ -13,6 +13,7 @@ import { createBriefService } from '../../src/services/briefService.js';
 import {
   OPENAQ_BASE,
   createOpenAqClient,
+  effectiveUnits,
   haversineKm,
   toMicrograms,
 } from '../../src/services/openaq.js';
@@ -68,6 +69,16 @@ describe('unit conversion and distance', () => {
     expect(toMicrograms(1, 'ppm', 'co')).toBeCloseTo(1145.6, 1);
     expect(toMicrograms(1, 'ppm', 'pm2_5')).toBeNull();
     expect(toMicrograms(1, 'furlongs', 'no2')).toBeNull();
+  });
+
+  it("corrects OpenAQ's unit labels for CPCB gas sensors", () => {
+    expect(effectiveUnits('CPCB', 'no2', 'ppb')).toBe('µg/m³');
+    expect(effectiveUnits('CPCB', 'so2', 'ppb')).toBe('µg/m³');
+    expect(effectiveUnits('CPCB', 'o3', 'µg/m³')).toBe('µg/m³');
+    expect(effectiveUnits('CPCB', 'co', 'ppb')).toBe('mg/m³');
+    expect(effectiveUnits('CPCB', 'pm2_5', 'µg/m³')).toBe('µg/m³');
+    expect(effectiveUnits('AirNow', 'no2', 'ppb')).toBe('ppb');
+    expect(effectiveUnits(undefined, 'co', 'ppm')).toBe('ppm');
   });
 
   it('computes great-circle distance', () => {
@@ -134,6 +145,16 @@ describe('OpenAQ client', () => {
     expect(snapshot?.concentrations.no2).toBeCloseTo(94.1, 1); // 50 ppb
     expect(snapshot?.concentrations.co).toBeCloseTo(2291.2, 1); // 2 ppm
     expect(fetchFn).toHaveBeenCalledTimes(4);
+  });
+
+  it('reads CPCB stations in their native units (live R K Puram values, 24 Nov 2026)', async () => {
+    const rkPuram = location(17, 28.563, 77.187, { provider: { name: 'CPCB' } });
+    const { client } = clientWith([rkPuram], {
+      17: [reading(171, 64), reading(172, 140), reading(173, 26.3), reading(174, 0.87)],
+    });
+    const snapshot = await client.latest(28.56, 77.18);
+    // NO2 labelled "ppb" is really µg/m³; CO is really mg/m³ (0.87 mg/m³ = 870 µg/m³).
+    expect(snapshot?.concentrations).toEqual({ pm2_5: 64, pm10: 140, no2: 26.3, co: 870 });
   });
 
   it('returns null when no fresh station measures particles', async () => {
@@ -269,13 +290,29 @@ describe('calibration', () => {
     expect(tiny.source.factors.pm2_5).toBe(MIN_FACTOR);
   });
 
+  it('compares model and measurement at the hour the stations measured', () => {
+    // Official data arrives hours late: measured at 03:00 while "now" is 06:00.
+    const late = {
+      ...STATION,
+      stations: [{ name: 'Late', distanceKm: 2, measuredAtLocal: '2026-11-24T03:00' }],
+      concentrations: { pm2_5: 113.8 },
+    };
+    const { source } = calibrateAir(makeAir(), late, 6);
+    expect(source.factors.pm2_5).toBe(2); // 113.8 ÷ model 56.9 at 03:00, not ÷ 63.8 at 06:00
+    const unknownTime = {
+      ...late,
+      stations: [{ name: 'X', distanceKm: 2, measuredAtLocal: '2030-01-01T00:00' }],
+    };
+    expect(calibrateAir(makeAir(), unknownTime, 6).source.factors.pm2_5).toBeCloseTo(1.78, 2);
+  });
+
   it('describes several stations', () => {
     expect(
       describeStations('OpenAQ', [
         { name: 'A', distanceKm: 1, measuredAtLocal: '2026-11-24T05:00' },
         { name: 'B', distanceKm: 2.25, measuredAtLocal: '2026-11-24T06:00' },
       ]),
-    ).toBe('Measured at 06:00 by 2 monitoring stations via OpenAQ: A (1.0 km), B (2.3 km).');
+    ).toBe('Measured 05:00–06:00 by 2 monitoring stations via OpenAQ: A (1.0 km), B (2.3 km).');
     expect(describeStations('OpenAQ', [{ name: 'A', distanceKm: 1, measuredAtLocal: '' }])).toMatch(
       /^Measured by 1/,
     );

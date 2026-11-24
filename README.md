@@ -127,18 +127,26 @@ smog in South Asian cities. While testing on a late-November afternoon (24 Nov 2
 model only for what stations cannot do: forecast.
 
 1. **Find stations.** OpenAQ v3 `/locations` within 25 km, reference monitors only (`monitor=true`, and `isMonitor`
-   re-checked), with a PM2.5 or PM10 sensor and a reading in the last 3 hours. The nearest 3 by great-circle distance
+   re-checked), with a PM2.5 or PM10 sensor and a reading in the last 6 hours (CPCB data reaches OpenAQ about 3–4 hours
+   after measurement). The nearest 3 by great-circle distance
    are used.
 2. **Read them in parallel.** `/locations/{id}/latest` for each; readings are joined to their sensor by `sensorsId`.
    One failing station is skipped; if all fail, the error is logged and the app falls back (step 5).
 3. **Normalise.** Units are converted to µg/m³ (ppb and ppm via molecular weight at 25 °C, mg/m³ × 1000). Null,
-   negative and stale values are dropped, and each pollutant is averaged across the stations.
+   negative and stale values are dropped (stations also list old, retired sensors), and each pollutant is averaged
+   across the stations.
+   - **A unit bug in the source data, found and corrected:** OpenAQ labels India's CPCB gas sensors "ppb", but the
+     values are CPCB's native units (µg/m³; mg/m³ for CO). Live Delhi data proves it: NOx (ppb) equals NO + NO₂ only
+     when NO and NO₂ are read as µg/m³ (all 10 stations checked agree within 0.3 ppb), and "0.87 ppb" of CO is
+     physically impossible outdoors. Trusting the labels would overstate NO₂ and SO₂ about 1.9–2.6× and understate
+     CO about 1,000×.
 4. **Calibrate.** "Right now" uses **only measured values**. For each measured pollutant, factor = measured ÷ modelled
-   at the current hour (clamped to 0.2–8×), and every forecast hour is multiplied by it. Pollutants the stations do not
+   **at the hour the stations measured** (official data is published hours late; clamped to 0.2–8×), and every forecast hour is multiplied by it. Pollutants the stations do not
    measure are left out of the forecast instead of mixing calibrated and uncalibrated values.
 5. **Say where it came from.** The brief carries a `dataSource` label shown on the Today tab, as a badge in the
-   location bar, and in the assistant's answers, for example _"Measured at 16:00 by 3 monitoring stations via OpenAQ: Anand Vihar
-   (3.2 km), …"_. Without a key, or when no station has reported recently, the label warns that the value is a model
+   location bar, and in the assistant's answers, for example _"Measured 13:30–16:00 by 3 monitoring stations via OpenAQ:
+   Chandni Chowk, Delhi - IITM (0.7 km), New Delhi (1.9 km), ITO, New Delhi - CPCB (2.8 km)"_ (live, 24 Nov 2026,
+   NAQI 239 "Poor", where the model alone said 90 "Satisfactory"). Without a key, or when no station has reported recently, the label warns that the value is a model
    estimate that can under-read winter smog.
 
 ### 4.2 AQI engine: two standards, one algorithm (`src/domain/aqi/`)
@@ -254,9 +262,9 @@ Every time label carries day context ("Before 07:00 **tomorrow**"), so evening u
 ## 6. Assumptions
 
 - **Measured data:** "right now" is the average of up to 3 reference monitors within 25 km that reported in the last
-  3 hours. Readings are typically hourly and can lag, so the UI shows the measurement time, and anything older
-  than 3 hours is ignored.
-- **Forecast calibration:** the model's hour-to-hour shape is kept, and its error at the current hour is assumed to
+  6 hours. Official data is published hours late, so the UI shows the measurement time (or range), and anything
+  older than 6 hours is ignored.
+- **Forecast calibration:** the model's hour-to-hour shape is kept, and its error at the measurement hour is assumed to
   hold for the next 24 hours (one factor per pollutant, clamped to 0.2–8×).
 - **Fallback data:** without station data, Open-Meteo's CAMS model gives concentrations on a ~10–45 km grid. These
   are modelled values, and the UI and assistant say so.
@@ -313,7 +321,7 @@ See [`SECURITY.md`](SECURITY.md) for the full threat model. Highlights:
   reasoning effort and capped output.
 - **Linear algorithms** (n ≤ 48 hours) and no database.
 
-### Testing: 390 automated tests (Vitest + fast-check + axe-core)
+### Testing: 393 automated tests (Vitest + fast-check + axe-core)
 
 | Suite                                                                                                          | What it proves                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | -------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -477,7 +485,7 @@ docs/DECISIONS.md      design decisions and red-team log
 
 ## 12. Limitations and next steps
 
-- Where no reference monitor has reported within 25 km in the last 3 hours, "right now" falls back to the
+- Where no reference monitor has reported within 25 km in the last 6 hours, "right now" falls back to the
   (labelled) model. Next step: add low-cost sensor networks with their own correction factors.
 - The forecast calibration uses one factor per pollutant for 24 hours. Next step: validate against station history and
   let the correction fade with forecast lead time if that proves more accurate.

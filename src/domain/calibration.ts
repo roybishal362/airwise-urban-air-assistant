@@ -15,8 +15,8 @@ import {
  *
  *  - "Right now" uses ONLY measured station concentrations.
  *  - The hourly forecast keeps the model's shape but is rescaled, pollutant
- *    by pollutant, so its current hour matches the measurement
- *    (ratio = measured ÷ modelled, clamped to a sane range).
+ *    by pollutant, by the model's error at the hour the stations measured
+ *    (ratio = measured ÷ modelled at that hour, clamped to a sane range).
  *  - Pollutants the stations do not measure are left out of the forecast
  *    rather than mixing anchored and un-anchored values.
  */
@@ -41,20 +41,31 @@ const clamp = (value: number): number => Math.min(MAX_FACTOR, Math.max(MIN_FACTO
 
 const round2 = (value: number): number => Math.round(value * 100) / 100;
 
+/** Latest measurement time across stations (local 'YYYY-MM-DDTHH:MM'), or ''. */
+const latestMeasurement = (stations: readonly StationInfo[]): string =>
+  stations
+    .map((s) => s.measuredAtLocal)
+    .filter(Boolean)
+    .sort()
+    .at(-1) ?? '';
+
 export function describeStations(provider: string, stations: readonly StationInfo[]): string {
   const names = stations.map((s) => `${s.name} (${s.distanceKm.toFixed(1)} km)`).join(', ');
-  const latest =
-    stations
-      .map((s) => s.measuredAtLocal)
-      .sort()
-      .at(-1) ?? '';
-  const time = latest ? ` at ${latest.slice(11, 16)}` : '';
+  const times = stations
+    .map((s) => s.measuredAtLocal)
+    .filter(Boolean)
+    .sort()
+    .map((t) => t.slice(11, 16));
+  const [first] = times;
+  const last = times.at(-1);
+  const time = !first || !last ? '' : first === last ? ` at ${last}` : ` ${first}–${last}`;
   return `Measured${time} by ${stations.length} monitoring station${stations.length === 1 ? '' : 's'} via ${provider}: ${names}.`;
 }
 
 /**
  * Anchor the model snapshot to station measurements.
- * @param currentIndex index of the current hour in `air.hourly`
+ * @param currentIndex index of the current hour in `air.hourly` (used when the
+ *   measurement time is unknown or outside the model's hours)
  */
 export function calibrateAir(
   air: AirSnapshot,
@@ -76,11 +87,16 @@ export function calibrateAir(
     };
   }
 
-  const modelNow = air.hourly[currentIndex]?.concentrations ?? air.current;
+  // Compare like with like: the model at the hour the stations measured
+  // (official data is published hours late), else the current hour.
+  const measuredHour = latestMeasurement(station.stations).slice(0, 13);
+  const measuredIndex = air.hourly.findIndex((h) => h.time.slice(0, 13) === measuredHour);
+  const modelAtMeasurement =
+    air.hourly[measuredIndex >= 0 ? measuredIndex : currentIndex]?.concentrations ?? air.current;
   const factors: Partial<Record<PollutantId, number>> = {};
   for (const id of POLLUTANT_IDS) {
     const real = measured[id];
-    const model = modelNow[id];
+    const model = modelAtMeasurement[id];
     if (typeof real !== 'number') continue;
     factors[id] = typeof model === 'number' && model > 0 ? round2(clamp(real / model)) : 1;
   }

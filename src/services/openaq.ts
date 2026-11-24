@@ -37,6 +37,7 @@ const locationsSchema = z.object({
       id: z.number(),
       name: z.string().nullable(),
       isMonitor: z.boolean().optional(),
+      provider: z.object({ name: z.string() }).nullable().optional(),
       coordinates: z.object({ latitude: z.number(), longitude: z.number() }),
       datetimeLast: timeSchema.nullable().optional(),
       sensors: z.array(
@@ -80,6 +81,23 @@ export function toMicrograms(value: number, units: string, pollutant: PollutantI
   return null;
 }
 
+/**
+ * The units a reading is really in. OpenAQ labels India's CPCB gas sensors
+ * "ppb", but the values are CPCB's native units: µg/m³, and mg/m³ for CO.
+ * Verified on live Delhi data (24 Nov 2026, 10 stations): NOx (ppb) equals
+ * NO + NO2 only when NO and NO2 are read as µg/m³ (R K Puram: 1.9 + 26.3
+ * µg/m³ = 15.5 ppb vs NOx 0.0156 ppm), and CO "0.87 ppb" is physically
+ * impossible outdoors but a typical value in mg/m³.
+ */
+export function effectiveUnits(
+  provider: string | undefined,
+  pollutant: PollutantId,
+  labelled: string,
+): string {
+  if (provider !== 'CPCB' || pollutant === 'pm2_5' || pollutant === 'pm10') return labelled;
+  return pollutant === 'co' ? 'mg/m³' : 'µg/m³';
+}
+
 export interface StationClient {
   latest(latitude: number, longitude: number): Promise<StationSnapshot | null>;
 }
@@ -89,7 +107,11 @@ export interface OpenAqOptions {
   timeoutMs: number;
   fetchFn?: FetchFn;
   now?: () => number;
-  /** Ignore stations whose last reading is older than this. */
+  /**
+   * Ignore readings older than this. CPCB data reaches OpenAQ about 3–4 hours
+   * after measurement, so 6 h keeps official stations while the UI shows the
+   * real measurement time.
+   */
   maxAgeHours?: number;
   /** Average over at most this many nearest stations. */
   maxStations?: number;
@@ -101,7 +123,7 @@ export function createOpenAqClient(options: OpenAqOptions): StationClient {
     timeoutMs,
     fetchFn = fetch,
     now = Date.now,
-    maxAgeHours = 3,
+    maxAgeHours = 6,
     maxStations = 3,
   } = options;
 
@@ -182,7 +204,8 @@ export function createOpenAqClient(options: OpenAqOptions): StationClient {
           const pollutant = sensor ? PARAMETER_MAP[sensor.parameter.name] : undefined;
           if (!sensor || !pollutant || reading.value === null || reading.value < 0) continue;
           if (!isFresh(reading.datetime.utc)) continue;
-          const value = toMicrograms(reading.value, sensor.parameter.units, pollutant);
+          const units = effectiveUnits(loc.provider?.name, pollutant, sensor.parameter.units);
+          const value = toMicrograms(reading.value, units, pollutant);
           if (value === null) continue;
           const slot = (sums[pollutant] ??= { total: 0, count: 0 });
           slot.total += value;
