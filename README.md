@@ -54,7 +54,8 @@ windows, is my purifier enough, should I take the metro?_ They also want to know
 ## 2. What a family sees
 
 **A landing page, then an app.** The hero ("Breathe easier this winter.") has a big search bar, **one-tap popular
-cities** (Delhi, Mumbai, Kolkata, Lucknow, Patna, Bengaluru) and _Use my location_. Once a city is chosen, the page
+cities** (Delhi, Mumbai, Kolkata, Lucknow, Patna, Bengaluru) and _Use my location_ (if the device cannot locate
+itself, AirWise falls back to the approximate city from your network and says so; a blocked permission is respected). Once a city is chosen, the page
 becomes a **tabbed app**:
 
 - A **location bar** with the place, a live AQI pill in the category colour, a **"● Live station data"** or **"Model
@@ -297,46 +298,59 @@ See [`SECURITY.md`](SECURITY.md) for the full threat model. Highlights:
 - **CodeQL** static analysis (security-and-quality queries) on every push.
 - SSRF-proof fixed upstream hosts and generic error messages.
 - Health data kept out of URLs and logs, and `no-store` responses.
+- The approximate-location fallback (`GET /api/locate`) only echoes the platform's city-level IP geolocation back to
+  the same visitor, validated with the same strict place schema as user input; nothing is stored or logged.
 - Secrets (Gemini, Claude, OpenAQ keys) only from the environment, sent only in headers to fixed hosts and never
   logged; a non-root container; `npm audit` in CI (0 known vulnerabilities at the time of
   writing).
 
 ### Efficiency
 
-- **No front-end framework or build step.** The whole UI is ~157 KB of hand-written HTML (including the inline SVG
-  icon sprite), CSS and JS, ~37 KB gzipped. It is served with gzip and ETag revalidation: unchanged files cost a 304,
-  and a deploy never mixes old JS with new HTML.
-- **No import waterfall:** `<link rel="modulepreload">` for all 23 imported ES modules, so the browser fetches them in
-  parallel.
+- **No front-end framework; a tiny production build.** Development serves 24 readable ES modules.
+  `npm run build` runs [`scripts/build-web.ts`](scripts/build-web.ts) (esbuild): one minified JS bundle and one
+  minified CSS file with content-hashed names, and the HTML rewritten to use them. The whole UI is **3 files,
+  26.5 KB gzipped** (HTML 7.6, JS 13.0, CSS 5.9).
+- **Cache once, then never again:** hashed `/assets/` files are cached for a year (`immutable`), since a deploy changes
+  their names; only the HTML is revalidated. Icons and the manifest are cached for a day.
+- **Measured on the live site** (Chrome, India → Mumbai, 24 Nov 2026):
+
+  |                           | Before the build  | Now                                           |
+  | ------------------------- | ----------------- | --------------------------------------------- |
+  | Requests, first visit     | 31                | **8** (6 files + 2 API calls)                 |
+  | Static bytes, first visit | ~37 KB gzipped    | **30.5 KB** (incl. favicon and manifest)      |
+  | Repeat visit              | ~25 revalidations | HTML check (300 B); JS and CSS **from cache** |
+  | HTML parsed, repeat visit | n/a               | **111 ms**                                    |
+
 - **Caching:**
   - Static files from Vercel's CDN; the API runs in Mumbai (`bom1`), near the users it serves.
   - TTL + LRU cache: air 10 min, station readings 10 min, weather 30 min, geocoding 24 h, at most 500 entries.
   - Keys use coordinates rounded to ~1 km, so neighbours share one upstream call.
   - In-flight request coalescing: 50 simultaneous users mean one fetch.
 - **Parallel and bounded upstream calls:** air, weather and stations are fetched in parallel, with hard timeouts and
-  one retry only for transient errors (network, 429, 5xx). A station look-up is at most 4 small requests (1 search
-  - up to 3 readings, themselves in parallel) per ~1 km area per 10 minutes, far inside OpenAQ's free 60 requests a
-    minute.
+  one retry only for transient errors (network, 429, 5xx). A station look-up is at most 4 small requests (one search,
+  then up to 3 readings in parallel) per ~1 km area per 10 minutes, far inside OpenAQ's free 60 requests a minute.
 - **Small prompts:** the GenAI prompt is a compact projection of the brief (~9 KB, roughly 2–3 k tokens), with low
   reasoning effort and capped output.
 - **Linear algorithms** (n ≤ 48 hours) and no database.
 
-### Testing: 393 automated tests (Vitest + fast-check + axe-core)
+### Testing: 408 automated tests (Vitest + fast-check + axe-core)
 
-| Suite                                                                                                          | What it proves                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
-| -------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `tests/unit/aqi.test.ts`                                                                                       | Known breakpoint values for both standards, unit conversions, truncation, dominant pollutant, table integrity, **WCAG contrast of every AQI colour pair**                                                                                                                                                                                                                                                                                                                       |
-| `tests/unit/properties.test.ts`                                                                                | **Property-based tests** (fast-check): AQI is bounded and monotonic for any concentration; the overall AQI is the max sub-index; indoor PM2.5 falls as filtration rises; the "best" window is never beaten; sanitisation is bounded, tag-free and idempotent; **150 random households fuzzed through the whole pipeline** with no NaN, undefined or broken text                                                                                                                 |
-| `tests/unit/forecast.test.ts`, `smog.test.ts`                                                                  | Window search (ties, midnight, constraints), day labels, trends, ventilation coefficient, trap-risk grading, fog, missing data                                                                                                                                                                                                                                                                                                                                                  |
-| `tests/unit/household-risk.test.ts`, `indoor-impact.test.ts`, `brief-routine.test.ts`, `region-policy.test.ts` | Every decision branch, mass-balance maths, impact factors, health-first ranking, grid-aware EV/metro CO₂, India-only schemes, GRAP stages and personal implications, community totals, the full brief on **real captured Delhi data**                                                                                                                                                                                                                                           |
-| `tests/unit/stations.test.ts`                                                                                  | OpenAQ client with a fake fetch: nearest fresh reference stations only (stale, low-cost and PM-less stations filtered), ppb/ppm/mg-to-µg conversion, averaging, parallel reads with one failing station skipped, HTTP/network/schema errors; calibration (measured "now", per-pollutant forecast scaling, clamping, honest model label); the brief turning **Severe** with real Delhi-level PM2.5; service caching and fallback                                                 |
-| `tests/unit/infrastructure.test.ts`                                                                            | Cache TTL, LRU and coalescing, retry policy, upstream schema validation, config validation, logging                                                                                                                                                                                                                                                                                                                                                                             |
-| `tests/unit/assistant.test.ts`, `edge-cases.test.ts`                                                           | Intent detection (incl. Hinglish), prompt sanitisation and grounding, unit-explicit quantities, Gemini model-chain fallthrough, Claude refusals, rule-based answers for every intent, graceful fallback without logging user content                                                                                                                                                                                                                                            |
-| `tests/integration/api.test.ts`, `guards-server.test.ts`, `vercel.test.ts`                                     | Real Express app: security headers, validation, 400/403/404/413/415/429/500/502 mapping, cross-site guard, request IDs, no internal leaks, caching and 304s, compression, production bootstrap on a free port; `vercel.test.ts` keeps the CDN's headers identical to the app's and checks the API rewrite, Mumbai region, upload allow-list and the serverless entry                                                                                                            |
-| `tests/integration/process.test.ts`                                                                            | **Spawns the real server process**, waits for its structured log line and calls it over HTTP                                                                                                                                                                                                                                                                                                                                                                                    |
-| `tests/frontend/*.test.ts`                                                                                     | Full UI flows in jsdom (**ARIA tabs**: roving tabindex, Arrow/Home/End with wrap-around, deep links and the back button; landing → app switch and the live-data badge; search, geolocation, field-level errors, share, read-aloud, chat), XSS-safe rendering, tamper-proof storage, Hindi language tagging, **axe-core audits of the empty and fully rendered page (0 violations, with a self-test)**, and **contrast checks of every theme token pair in light and dark mode** |
+| Suite                                                                                                          | What it proves                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| -------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `tests/unit/aqi.test.ts`                                                                                       | Known breakpoint values for both standards, unit conversions, truncation, dominant pollutant, table integrity, **WCAG contrast of every AQI colour pair**                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| `tests/unit/properties.test.ts`                                                                                | **Property-based tests** (fast-check): AQI is bounded and monotonic for any concentration; the overall AQI is the max sub-index; indoor PM2.5 falls as filtration rises; the "best" window is never beaten; sanitisation is bounded, tag-free and idempotent; **150 random households fuzzed through the whole pipeline** with no NaN, undefined or broken text                                                                                                                                                                                                                                 |
+| `tests/unit/forecast.test.ts`, `smog.test.ts`                                                                  | Window search (ties, midnight, constraints), day labels, trends, ventilation coefficient, trap-risk grading, fog, missing data                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| `tests/unit/household-risk.test.ts`, `indoor-impact.test.ts`, `brief-routine.test.ts`, `region-policy.test.ts` | Every decision branch, mass-balance maths, impact factors, health-first ranking, grid-aware EV/metro CO₂, India-only schemes, GRAP stages and personal implications, community totals, the full brief on **real captured Delhi data**                                                                                                                                                                                                                                                                                                                                                           |
+| `tests/unit/stations.test.ts`                                                                                  | OpenAQ client with a fake fetch: nearest fresh reference stations only (stale, low-cost and PM-less stations filtered), ppb/ppm/mg-to-µg conversion, averaging, parallel reads with one failing station skipped, HTTP/network/schema errors; calibration (measured "now", per-pollutant forecast scaling, clamping, honest model label); the brief turning **Severe** with real Delhi-level PM2.5; service caching and fallback                                                                                                                                                                 |
+| `tests/unit/build-web.test.ts`                                                                                 | The production build: 24 modules become one hashed, fully bundled, minified JS file plus hashed CSS; the HTML points at them with no leftover preloads and no inline code (CSP-clean); under 32 KB gzipped; a year-long `immutable` cache only for hashed files; production serves the build, development the sources                                                                                                                                                                                                                                                                           |
+| `tests/unit/infrastructure.test.ts`                                                                            | Cache TTL, LRU and coalescing, retry policy, upstream schema validation, config validation, logging                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| `tests/unit/assistant.test.ts`, `edge-cases.test.ts`                                                           | Intent detection (incl. Hinglish), prompt sanitisation and grounding, unit-explicit quantities, Gemini model-chain fallthrough, Claude refusals, rule-based answers for every intent, graceful fallback without logging user content                                                                                                                                                                                                                                                                                                                                                            |
+| `tests/integration/api.test.ts`, `guards-server.test.ts`, `vercel.test.ts`                                     | Real Express app: security headers, validation, 400/403/404/413/415/429/500/502 mapping, cross-site guard, request IDs, no internal leaks, caching and 304s, compression, production bootstrap on a free port; `vercel.test.ts` keeps the CDN's headers identical to the app's and checks the API rewrite, Mumbai region, upload allow-list and the serverless entry                                                                                                                                                                                                                            |
+| `tests/integration/locate.test.ts`                                                                             | The approximate-location fallback: platform geo headers become a validated "(approximate)" place, odd or injected city names are dropped but the area kept, no coordinates means 404, responses are never cached                                                                                                                                                                                                                                                                                                                                                                                |
+| `tests/integration/process.test.ts`                                                                            | **Spawns the real server process**, waits for its structured log line and calls it over HTTP                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| `tests/frontend/*.test.ts`                                                                                     | Full UI flows in jsdom (**ARIA tabs**: roving tabindex, Arrow/Home/End with wrap-around, deep links and the back button; landing → app switch, the live-data badge and page titles; search; **every location failure** (blocked permission respected with how-to-allow, network fallback, focus to search); field-level errors, share, read-aloud, chat), XSS-safe rendering, tamper-proof storage, Hindi language tagging, **axe-core audits of the empty and fully rendered page (0 violations, with a self-test)**, and **contrast checks of every theme token pair in light and dark mode** |
 
-Coverage (thresholds enforced in CI on Node 20 and 22): **100 % lines, 99.4 % statements, 99.8 % functions, 94.8 % branches.**
+Coverage (thresholds enforced in CI on Node 20 and 22): **100 % lines, 99.4 % statements, 99.8 % functions, 95.0 % branches.**
 
 ### Accessibility
 
@@ -349,11 +363,17 @@ The design targets WCAG 2.2 AA:
   - **Tabs** follow the WAI-ARIA tabs pattern: `role="tablist"`/`tab`/`tabpanel`, `aria-selected` and
     `aria-controls`, a roving `tabindex` (only the active tab is in the Tab order), Arrow/Home/End keys, and a URL per
     tab so the back button works.
-  - Focus moves to the Today panel after a search.
+  - Focus moves to the Today panel after a search. If location fails, the message says why and how to fix it, and
+    focus moves to the search box; the button reports `aria-busy` while locating.
+  - The page title follows the city and tab ("Forecast · Delhi · AirWise"), so screen-reader users and browser
+    history always know where they are.
+  - Decorative marks (the "live" dot) are drawn in CSS, so nothing like "black circle" is read aloud.
   - The hourly chart has screen-reader text for every bar, and each chat message names its speaker.
 - **Interaction:** colour is never the only signal (text labels on every AQI and bar), visible focus rings, 44 px
   touch targets, and full keyboard support (Enter to send, Shift+Enter for a new line).
-- **Forms:** an invalid field gets `aria-invalid`, is linked to the error message with `aria-describedby` and receives
+- **Reflow:** on screens below 40rem, two-column meters stack and value columns size to fit, so nothing scrolls
+  sideways at 320 px; on phones the tab bar becomes a bottom navigation bar.
+- **Forms:** the city search declares `autocomplete="address-level2"` (WCAG 1.3.5); an invalid field gets `aria-invalid`, is linked to the error message with `aria-describedby` and receives
   focus; errors are announced assertively, progress politely.
 - **Language:** Hindi replies are tagged `lang="hi"` so screen readers switch to a Hindi voice.
 - **Contrast:** every text/background token pair passes 4.5:1 and UI elements 3:1 in light and dark themes (tested);
@@ -372,7 +392,7 @@ The design targets WCAG 2.2 AA:
   browser app is also dependency-injected (`startApp({ api, storage, geolocation, … })`) so it is fully testable.
 - **The browser code is type-checked against the server's own domain types** (`AirBrief`), so the API contract and UI
   cannot drift silently. No `any` in the front end.
-- Small, cohesive modules (no source file exceeds 320 lines except the AQI breakpoint data table) and a written
+- Small, cohesive modules (no source file exceeds 330 lines except the AQI breakpoint data table) and a written
   [decisions log](docs/DECISIONS.md).
 
 ## 8. Run it locally
@@ -458,9 +478,10 @@ vercel.json            CDN headers, /api rewrite, Mumbai region
 public/
   index.html, css/     accessible markup and styles (no inline code)
   js/app.js            composition root (dependency-injected); js/main.js is the 2-line entry
-  js/controllers/      tabs (ARIA, deep links), search, family editor, impact slider + pledges, share/speech, voice
+  js/controllers/      tabs (ARIA, deep links), search + location fallback, family editor, impact, share/speech, voice
   js/render/           one module per section: AQI dial, glance tiles, family, SVG chart, routine, indoor, impact
   js/community.js      instant client-side community scaling and pledge totals
+scripts/build-web.ts   production UI build: one hashed, minified JS and CSS file (esbuild)
 tests/                 unit, property-based, integration, process and front-end tests + real-data fixtures
 docs/DECISIONS.md      design decisions and red-team log
 ```

@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import request from 'supertest';
 import { describe, expect, it } from 'vitest';
+import { cacheControlFor } from '../../src/app.js';
 import { composeApp } from '../../src/server.js';
 import { createVercelApp } from '../../src/vercel.js';
 
@@ -56,8 +57,14 @@ describe('Vercel deployment config', () => {
     expect(vercel.outputDirectory).toBe('dist/web');
     const assets = vercel.headers.find((h) => h.source === '/assets/(.*)');
     expect(assets?.headers).toEqual([
-      { key: 'Cache-Control', value: 'public, max-age=31536000, immutable' },
+      { key: 'Cache-Control', value: cacheControlFor('dist/web/assets/app-ABCD1234.js') },
     ]);
+    // Icons and the manifest: the same one-day policy the Express server uses.
+    const icons = vercel.headers.find((h) => h.source.includes('favicon'));
+    expect(icons?.headers).toEqual([
+      { key: 'Cache-Control', value: cacheControlFor('favicon.svg') },
+    ]);
+    expect(cacheControlFor('manifest.webmanifest')).toBe(icons?.headers[0]?.value);
   });
 
   it('routes every API path to the single function and runs it in Mumbai', () => {

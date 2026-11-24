@@ -27,6 +27,15 @@
       ]
     },
     {
+      "source": "/(favicon\\.svg|manifest\\.webmanifest)",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=86400"
+        }
+      ]
+    },
+    {
       "source": "/:path((?!api/).*)",
       "headers": [
         {

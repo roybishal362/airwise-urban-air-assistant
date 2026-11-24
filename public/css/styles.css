@@ -1886,9 +1886,11 @@ tr.current th {
     display: none;
   }
 
+  /* Values like "2,305 µg/m³" never wrap, so their column sizes to fit them
+     instead of a fixed width that long values would spill out of at 320 px. */
   .pollutant-meters li,
   .viz li {
-    grid-template-columns: 1fr 4.5rem;
+    grid-template-columns: minmax(0, 1fr) auto;
   }
 
   .pollutant-meters .meter,
