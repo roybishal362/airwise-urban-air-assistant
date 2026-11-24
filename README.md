@@ -9,6 +9,8 @@
 
 **Chosen vertical:** Challenge 6, _Urban Air Quality Assistant_.
 
+**Live app:** https://airwise-urban-air-assistant.vercel.app (Vercel, Mumbai region)
+
 ---
 
 ## Contents
@@ -21,7 +23,7 @@
 6. [Assumptions](#6-assumptions)
 7. [Quality: security, efficiency, testing, accessibility](#7-quality-security-efficiency-testing-accessibility)
 8. [Run it locally](#8-run-it-locally)
-9. [Deploy (Google Cloud Run)](#9-deploy-google-cloud-run)
+9. [Deploy (Vercel)](#9-deploy-vercel)
 10. [Project structure](#10-project-structure)
 11. [Data sources and references](#11-data-sources-and-references)
 12. [Limitations and next steps](#12-limitations-and-next-steps)
@@ -299,6 +301,7 @@ See [`SECURITY.md`](SECURITY.md) for the full threat model. Highlights:
 - **No import waterfall:** `<link rel="modulepreload">` for all 23 imported ES modules, so the browser fetches them in
   parallel.
 - **Caching:**
+  - Static files from Vercel's CDN; the API runs in Mumbai (`bom1`), near the users it serves.
   - TTL + LRU cache: air 10 min, station readings 10 min, weather 30 min, geocoding 24 h, at most 500 entries.
   - Keys use coordinates rounded to ~1 km, so neighbours share one upstream call.
   - In-flight request coalescing: 50 simultaneous users mean one fetch.
@@ -310,7 +313,7 @@ See [`SECURITY.md`](SECURITY.md) for the full threat model. Highlights:
   reasoning effort and capped output.
 - **Linear algorithms** (n ≤ 48 hours) and no database.
 
-### Testing: 383 automated tests (Vitest + fast-check + axe-core)
+### Testing: 390 automated tests (Vitest + fast-check + axe-core)
 
 | Suite                                                                                                          | What it proves                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | -------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -321,7 +324,7 @@ See [`SECURITY.md`](SECURITY.md) for the full threat model. Highlights:
 | `tests/unit/stations.test.ts`                                                                                  | OpenAQ client with a fake fetch: nearest fresh reference stations only (stale, low-cost and PM-less stations filtered), ppb/ppm/mg-to-µg conversion, averaging, parallel reads with one failing station skipped, HTTP/network/schema errors; calibration (measured "now", per-pollutant forecast scaling, clamping, honest model label); the brief turning **Severe** with real Delhi-level PM2.5; service caching and fallback                                                 |
 | `tests/unit/infrastructure.test.ts`                                                                            | Cache TTL, LRU and coalescing, retry policy, upstream schema validation, config validation, logging                                                                                                                                                                                                                                                                                                                                                                             |
 | `tests/unit/assistant.test.ts`, `edge-cases.test.ts`                                                           | Intent detection (incl. Hinglish), prompt sanitisation and grounding, unit-explicit quantities, Gemini model-chain fallthrough, Claude refusals, rule-based answers for every intent, graceful fallback without logging user content                                                                                                                                                                                                                                            |
-| `tests/integration/api.test.ts`, `guards-server.test.ts`                                                       | Real Express app: security headers, validation, 400/403/404/413/415/429/500/502 mapping, cross-site guard, request IDs, no internal leaks, caching and 304s, compression, production bootstrap on a free port                                                                                                                                                                                                                                                                   |
+| `tests/integration/api.test.ts`, `guards-server.test.ts`, `vercel.test.ts`                                     | Real Express app: security headers, validation, 400/403/404/413/415/429/500/502 mapping, cross-site guard, request IDs, no internal leaks, caching and 304s, compression, production bootstrap on a free port; `vercel.test.ts` keeps the CDN's headers identical to the app's and checks the API rewrite, Mumbai region, upload allow-list and the serverless entry                                                                                                            |
 | `tests/integration/process.test.ts`                                                                            | **Spawns the real server process**, waits for its structured log line and calls it over HTTP                                                                                                                                                                                                                                                                                                                                                                                    |
 | `tests/frontend/*.test.ts`                                                                                     | Full UI flows in jsdom (**ARIA tabs**: roving tabindex, Arrow/Home/End with wrap-around, deep links and the back button; landing → app switch and the live-data badge; search, geolocation, field-level errors, share, read-aloud, chat), XSS-safe rendering, tamper-proof storage, Hindi language tagging, **axe-core audits of the empty and fully rendered page (0 violations, with a self-test)**, and **contrast checks of every theme token pair in light and dark mode** |
 
@@ -395,17 +398,23 @@ npm run dev                 # http://localhost:8080
 - `RATE_LIMIT_PER_MINUTE`, `CHAT_RATE_LIMIT_PER_MINUTE`
 - `UPSTREAM_TIMEOUT_MS`, `LLM_TIMEOUT_MS`
 
-## 9. Deploy (Google Cloud Run)
+## 9. Deploy (Vercel)
 
-The `Dockerfile` is a multi-stage build that runs as a non-root user and includes a health check. Cloud Run needs a
-billing-enabled Google Cloud project; the same image runs on any container host, and `npm run build && npm start`
-runs anywhere Node 20+ does.
+The live app runs on Vercel's free Hobby plan (no billing). Pushing to `main` deploys automatically.
 
-```bash
-gcloud run deploy airwise --source . --region asia-south1 --allow-unauthenticated \
-  --set-env-vars TRUST_PROXY_HOPS=1,LLM_PROVIDER=auto \
-  --set-secrets GEMINI_API_KEY=gemini-api-key:latest,OPENAQ_API_KEY=openaq-api-key:latest
-```
+| Piece                     | How it runs                                                                                                                                                                                                                                                    |
+| ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `public/` (HTML, CSS, JS) | Served by Vercel's CDN, revalidated on every load (`max-age=0, must-revalidate`), with the **same security headers as the app** (CSP, HSTS, `nosniff`, Permissions-Policy…). `tests/integration/vercel.test.ts` fails if `vercel.json` and helmet ever differ. |
+| `/api/*`                  | Rewritten to **one Vercel Function** (`api/index.js` → `src/vercel.ts`) in **`bom1` (Mumbai)**, close to Indian users. The app is built once per instance and reused (Fluid compute), so caches stay warm.                                                     |
+| Client IPs                | Vercel overwrites `X-Forwarded-For`, so the function trusts exactly one proxy hop for rate limiting.                                                                                                                                                           |
+| Upload safety             | `.vercelignore` is an allow-list: `.env`, personal files and tests never leave the machine.                                                                                                                                                                    |
+| Secrets                   | `GEMINI_API_KEY` and `OPENAQ_API_KEY` are set as Vercel environment variables, never in the repo.                                                                                                                                                              |
+
+To deploy your own copy: import the GitHub repository at [vercel.com/new](https://vercel.com/new), add the two keys
+under **Settings → Environment Variables**, and deploy. `vercel.json` sets everything else.
+
+**Other hosts:** the multi-stage `Dockerfile` (non-root user, health check) runs on any container platform, and
+`npm run build && npm start` runs anywhere Node 20+ does.
 
 ## 10. Project structure
 
@@ -435,6 +444,9 @@ src/
   http/                routes, request schemas, security, request guards and error middleware
   lib/                 logger, errors, fetch-with-timeout-and-retry
   app.ts, server.ts, config.ts
+  vercel.ts            serverless entry: the same app as server.ts, one trusted proxy hop
+api/index.js           Vercel Function (re-exports the compiled entry)
+vercel.json            CDN headers, /api rewrite, Mumbai region
 public/
   index.html, css/     accessible markup and styles (no inline code)
   js/app.js            composition root (dependency-injected); js/main.js is the 2-line entry
@@ -470,6 +482,8 @@ docs/DECISIONS.md      design decisions and red-team log
 - The forecast calibration uses one factor per pollutant for 24 hours. Next step: validate against station history and
   let the correction fade with forecast lead time if that proves more accurate.
 - Even station data can miss very local hotspots (a burning garbage heap next door).
+- On Vercel, rate limits and caches live in each function instance's memory, so limits apply per instance. A
+  shared store (for example Redis) would make them global; at hackathon scale one warm instance serves the traffic.
 - Impact factors are national averages. Next step: city-specific bus fleets and real-time grid intensity.
 - GRAP is the only local rule set modelled so far; other cities' action plans (Mumbai, Kolkata, Lahore) would plug
   into `policy.ts` the same way.

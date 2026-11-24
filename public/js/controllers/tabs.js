@@ -37,9 +37,9 @@ export function setupTabs({ tablist, onChange, win = window }) {
   /**
    * Activate a tab (unknown ids fall back to the first tab).
    * @param {string} id
-   * @param {{ focus?: 'tab' | 'panel' | 'none', push?: boolean }} [options]
+   * @param {{ focus?: 'tab' | 'panel' | 'none', push?: boolean, scroll?: boolean }} [options]
    */
-  function select(id, { focus = 'none', push = true } = {}) {
+  function select(id, { focus = 'none', push = true, scroll = true } = {}) {
     const target = ids.includes(id) ? id : home;
     for (const entry of entries) {
       const on = entry.id === target;
@@ -52,8 +52,12 @@ export function setupTabs({ tablist, onChange, win = window }) {
     }
     current = target;
     const active = entries.find((entry) => entry.id === target);
-    if (focus === 'tab') active?.tab.focus();
-    if (focus === 'panel') active?.panel?.focus();
+    // If the page was scrolled past the panel's top, bring the new panel's
+    // start into view (CSS scroll-margin keeps it clear of the sticky bars).
+    const panelTop = active?.panel?.getBoundingClientRect().top ?? 0;
+    if (scroll && panelTop < 0) active?.panel?.scrollIntoView({ block: 'start' });
+    if (focus === 'tab') active?.tab.focus({ preventScroll: true });
+    if (focus === 'panel') active?.panel?.focus({ preventScroll: true });
     onChange?.(target);
     return target;
   }
@@ -86,6 +90,6 @@ export function setupTabs({ tablist, onChange, win = window }) {
 
   win.addEventListener('popstate', () => select(fromHash(), { push: false }));
 
-  select(fromHash(), { push: false });
+  select(fromHash(), { push: false, scroll: false });
   return { select, current: () => current };
 }

@@ -1735,6 +1735,12 @@ tr.current th {
   color: var(--brand-contrast);
 }
 
+/* When a tab opens while the page is scrolled, its panel starts just below
+   the sticky header and tab bar instead of hiding under them. */
+[role='tabpanel'] {
+  scroll-margin-top: 9rem;
+}
+
 .panel-head {
   margin-bottom: 1rem;
 }
@@ -1792,6 +1798,10 @@ tr.current th {
   .tablist [role='tab'] .icon {
     width: 1.35rem;
     height: 1.35rem;
+  }
+
+  [role='tabpanel'] {
+    scroll-margin-top: 5rem;
   }
 
   main,

@@ -24,7 +24,7 @@ export const PUBLIC_DIR = path.resolve(
 export function createApp(deps: AppDependencies): Express {
   const app = express();
   app.disable('x-powered-by');
-  // Needed for correct client IPs (rate limiting) behind Cloud Run's proxy.
+  // Needed for correct client IPs (rate limiting) behind a platform proxy (Vercel, Cloud Run).
   app.set('trust proxy', deps.trustProxyHops);
 
   app.use(requestId);

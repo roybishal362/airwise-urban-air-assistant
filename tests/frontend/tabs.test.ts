@@ -95,6 +95,18 @@ describe('accessible tabs', () => {
     expect(selected()).toEqual(['today']);
   });
 
+  it('brings the new panel into view when the page was scrolled past it, but not on load', () => {
+    const scrollIntoView = vi.fn();
+    for (const panel of document.querySelectorAll<HTMLElement>('[role="tabpanel"]')) {
+      panel.scrollIntoView = scrollIntoView;
+      panel.getBoundingClientRect = () => ({ top: -400 }) as DOMRect;
+    }
+    setupTabs({ tablist: tablist() });
+    expect(scrollIntoView).not.toHaveBeenCalled(); // initial selection never scrolls
+    $<HTMLButtonElement>('tab-forecast').click();
+    expect(scrollIntoView).toHaveBeenCalledWith({ block: 'start' });
+  });
+
   it('tolerates a tab without a panel and an empty tab list', () => {
     document.body.innerHTML = `<div role="tablist"><button role="tab" data-tab="solo">Solo</button></div>`;
     const solo = setupTabs({ tablist: tablist() });
