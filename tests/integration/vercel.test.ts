@@ -12,6 +12,7 @@ import { createVercelApp } from '../../src/vercel.js';
 
 interface VercelConfig {
   framework: null;
+  outputDirectory: string;
   regions: string[];
   rewrites: { source: string; destination: string }[];
   headers: { source: string; headers: { key: string; value: string }[] }[];
@@ -51,6 +52,14 @@ describe('Vercel deployment config', () => {
     expect(Object.keys(configured).sort()).toEqual([...SECURITY_HEADERS].sort());
   });
 
+  it('serves the production build and caches its hashed assets for a year', () => {
+    expect(vercel.outputDirectory).toBe('dist/web');
+    const assets = vercel.headers.find((h) => h.source === '/assets/(.*)');
+    expect(assets?.headers).toEqual([
+      { key: 'Cache-Control', value: 'public, max-age=31536000, immutable' },
+    ]);
+  });
+
   it('routes every API path to the single function and runs it in Mumbai', () => {
     expect(vercel.framework).toBeNull();
     expect(vercel.rewrites).toEqual([{ source: '/api/(.*)', destination: '/api' }]);
@@ -65,7 +74,7 @@ describe('Vercel deployment config', () => {
     expect(rules[0]).toBe('/*');
     const allowed = rules.filter((r) => r.startsWith('!')).map((r) => r.slice(1));
     expect(allowed).toEqual(
-      expect.arrayContaining(['api', 'src', 'public', 'package.json', 'vercel.json']),
+      expect.arrayContaining(['api', 'src', 'scripts', 'public', 'package.json', 'vercel.json']),
     );
     expect(allowed.some((path) => path.includes('.env') || path.includes('voicebox'))).toBe(false);
   });

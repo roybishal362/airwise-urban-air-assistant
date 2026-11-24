@@ -16,7 +16,8 @@ import { loadPlace, loadProfile, savePlace, saveProfile } from './storage.js';
  * @typedef {import('./storage.js').Profile} Profile
  * @typedef {import('../../src/domain/brief.js').AirBrief} AirBrief
  * @typedef {import('./controllers/voice.js').RecogniserConstructor} RecogniserConstructor
- * @typedef {Pick<typeof defaultApi, 'searchPlaces' | 'fetchBrief' | 'sendChat' | 'fetchHealth'>} Api
+ * @typedef {Pick<typeof defaultApi, 'searchPlaces' | 'fetchBrief' | 'sendChat' | 'fetchHealth'>
+ *   & Partial<Pick<typeof defaultApi, 'locateApproximately'>>} Api
  * @typedef {{
  *   storage?: Storage,
  *   api?: Api,
@@ -87,8 +88,12 @@ export function startApp(options = {}) {
   const howItWorks = byId('how-it-works', HTMLUListElement);
   const changeCity = byId('change-city', HTMLButtonElement);
   const targets = collectTargets();
+  const appTitle = document.title;
+  /** @type {(tabId: string) => void} */
+  let onTabChange = () => {};
   const tabs = setupTabs({
     tablist: /** @type {HTMLElement} */ (document.querySelector('[role="tablist"]')),
+    onChange: (tabId) => onTabChange(tabId),
   });
   const hadProfile = env.storage.getItem('airwise.profile.v1') !== null;
   const state = {
@@ -128,14 +133,32 @@ export function startApp(options = {}) {
   }
   setView(false);
 
+  /**
+   * In a single-page app the title is how screen-reader users (and browser
+   * tabs/history) know where they are: "Forecast · Delhi · AirWise".
+   * @param {string} tabId
+   */
+  function updateTitle(tabId = tabs.current()) {
+    if (!state.brief || !state.place) {
+      document.title = appTitle;
+      return;
+    }
+    const tab = document.getElementById(`tab-${tabId}`)?.textContent?.trim() ?? '';
+    document.title = [tab, state.place.name, 'AirWise'].filter(Boolean).join(' · ');
+  }
+  onTabChange = updateTitle;
+
   /** @param {AirBrief} brief */
   function showLocationAqi(brief) {
     locationAqi.textContent = `${brief.standard.shortName} ${brief.current.aqi} · ${brief.current.category.label}`;
     // CSSOM assignment is CSP-safe.
     locationAqi.style.backgroundColor = brief.current.category.color;
     locationAqi.style.color = brief.current.category.textColor;
-    byId('location-source', HTMLSpanElement).textContent =
-      brief.dataSource.kind === 'station' ? '● Live station data' : 'Model estimate';
+    const source = byId('location-source', HTMLSpanElement);
+    const live = brief.dataSource.kind === 'station';
+    // The "live" dot is drawn in CSS so screen readers don't read "black circle".
+    source.textContent = live ? 'Live station data' : 'Model estimate';
+    source.classList.toggle('is-live', live);
   }
 
   const impact = setupImpactControls({
@@ -171,6 +194,7 @@ export function startApp(options = {}) {
       showLocationAqi(brief);
       results.hidden = false;
       setView(true);
+      updateTitle();
       setStatus(
         `Plan ready for ${place.name}: ${brief.current.category.label}, AQI ${brief.current.aqi}.`,
       );
@@ -203,6 +227,7 @@ export function startApp(options = {}) {
     setStatus,
     errorMessage,
     geolocation: env.geolocation,
+    locateApproximately: env.api.locateApproximately,
   });
 
   const profile = setupProfile({

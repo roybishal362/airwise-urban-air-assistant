@@ -17,6 +17,7 @@ import { el, replaceChildren } from '../dom.js';
  *   setStatus: (message: string, kind?: 'info' | 'error') => void,
  *   errorMessage: (error: unknown) => string,
  *   geolocation: Geolocation | null | undefined,
+ *   locateApproximately?: () => Promise<Place>,
  * }} SearchOptions
  */
 
@@ -24,7 +25,8 @@ import { el, replaceChildren } from '../dom.js';
 export const placeLabel = (p) => [p.name, p.region, p.country].filter(Boolean).join(', ');
 
 /**
- * City search, one-tap popular cities and browser geolocation.
+ * City search, one-tap popular cities and browser geolocation (with a
+ * city-level network fallback when the device cannot locate itself).
  * @param {SearchOptions} options
  */
 export function setupSearch({
@@ -34,6 +36,7 @@ export function setupSearch({
   setStatus,
   errorMessage,
   geolocation,
+  locateApproximately,
 }) {
   async function search() {
     const query = ui.input.value.trim();
@@ -75,17 +78,65 @@ export function setupSearch({
     }
   }
 
-  function useMyLocation() {
-    if (!geolocation) {
+  /** Keyboard and screen-reader users land where they can act next. */
+  const focusSearch = () => ui.input.focus();
+
+  /** @param {boolean} busy */
+  function setLocating(busy) {
+    ui.geoButton.disabled = busy;
+    ui.geoButton.setAttribute('aria-busy', String(busy));
+  }
+
+  /**
+   * The device could not locate itself: fall back to the city-level area the
+   * server derives from the network, clearly marked "(approximate)".
+   * @param {string} reason
+   */
+  async function useNetworkArea(reason) {
+    if (!locateApproximately) {
+      setStatus(`${reason} Search for your city instead.`, 'error');
+      focusSearch();
+      return;
+    }
+    setStatus(`${reason} Finding your approximate area from your network instead…`);
+    try {
+      const place = await locateApproximately();
+      await choosePlace(place);
+    } catch {
+      setStatus(`${reason} Search for your city instead.`, 'error');
+      focusSearch();
+    }
+  }
+
+  /** @param {GeolocationPositionError} error */
+  function locationFailed(error) {
+    if (error.code === 1) {
+      // The user (or the browser) blocked location: respect it, no fallback.
       setStatus(
-        'Location is not available in this browser. Search for your city instead.',
+        'Location is blocked for this site. To allow it, click the icon left of the address bar, open Site settings and set Location to Allow. Or search for your city.',
         'error',
       );
+      focusSearch();
+      return Promise.resolve();
+    }
+    const reason =
+      error.code === 3
+        ? 'Finding your location took too long.'
+        : 'Your device could not work out its location (on Windows, check Settings › Privacy & security › Location).';
+    return useNetworkArea(reason);
+  }
+
+  function useMyLocation() {
+    setLocating(true);
+    const done = () => setLocating(false);
+    if (!geolocation) {
+      void useNetworkArea('This browser cannot share your location.').finally(done);
       return;
     }
     setStatus('Asking your browser for your location…');
     geolocation.getCurrentPosition(
       (position) => {
+        done();
         // ~100 m precision is plenty for a ~10 km air-quality grid and protects privacy.
         const round = (/** @type {number} */ n) => Math.round(n * 1000) / 1000;
         void choosePlace({
@@ -94,7 +145,7 @@ export function setupSearch({
           longitude: round(position.coords.longitude),
         });
       },
-      () => setStatus('Could not get your location. Search for your city instead.', 'error'),
+      (error) => void locationFailed(error).finally(done),
       { timeout: 10_000, maximumAge: 600_000 },
     );
   }

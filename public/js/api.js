@@ -84,6 +84,17 @@ export function sendChat(payload, fetchFn) {
   );
 }
 
+/**
+ * City-level area from the server (the host's IP geolocation), used only when
+ * the device cannot locate itself.
+ * @param {typeof fetch} [fetchFn]
+ * @returns {Promise<import('./storage.js').Place>}
+ */
+export async function locateApproximately(fetchFn) {
+  const data = await requestJson('/api/locate', {}, fetchFn);
+  return data.place;
+}
+
 /** @param {typeof fetch} [fetchFn] */
 export function fetchHealth(fetchFn) {
   return requestJson('/api/health', {}, fetchFn);

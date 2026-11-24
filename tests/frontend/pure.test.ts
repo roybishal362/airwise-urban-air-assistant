@@ -3,6 +3,7 @@ import {
   ApiError,
   fetchBrief,
   fetchHealth,
+  locateApproximately,
   requestJson,
   searchPlaces,
   sendChat,
@@ -123,6 +124,8 @@ describe('API client', () => {
     expect(fetchFn.mock.calls[0]?.[0]).toBe('/api/places?q=S%C3%A3o%20Paulo%20%26%20co');
     expect(await sendChat({}, ok({ reply: 'hi' }))).toEqual({ reply: 'hi' });
     expect(await fetchHealth(ok({ status: 'ok' }))).toEqual({ status: 'ok' });
+    const area = { name: 'Delhi (approximate)', latitude: 28.65, longitude: 77.23 };
+    expect(await locateApproximately(ok({ place: area }))).toEqual(area);
   });
 
   it('surfaces server error messages and network failures as ApiError', async () => {

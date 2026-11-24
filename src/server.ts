@@ -2,8 +2,9 @@ import type { Express } from 'express';
 import { existsSync } from 'node:fs';
 import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
+import path from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { createApp } from './app.js';
+import { createApp, PUBLIC_DIR, WEB_BUILD_DIR } from './app.js';
 import { loadConfig, type AppConfig } from './config.js';
 import { createLogger, type Logger } from './lib/logger.js';
 import { createAssistant } from './services/assistant/assistantService.js';
@@ -29,6 +30,14 @@ export interface ComposedApp {
 export interface Overrides {
   client?: OpenMeteoClient;
   stations?: StationClient | null;
+}
+
+/**
+ * Production serves the bundled, hashed build when it exists; development
+ * always serves the readable sources so edits show up without a rebuild.
+ */
+export function selectStaticDir(env: string, buildExists: boolean): string {
+  return env === 'production' && buildExists ? WEB_BUILD_DIR : PUBLIC_DIR;
 }
 
 /**
@@ -60,6 +69,7 @@ export function composeApp(
     trustProxyHops: config.trustProxyHops,
     rateLimitPerMinute: config.rateLimitPerMinute,
     chatRateLimitPerMinute: config.chatRateLimitPerMinute,
+    staticDir: selectStaticDir(config.env, existsSync(path.join(WEB_BUILD_DIR, 'index.html'))),
   });
   return { app, config, logger, assistantMode: assistant.mode };
 }

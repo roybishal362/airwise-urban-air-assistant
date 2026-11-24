@@ -1603,6 +1603,18 @@ tr.current th {
   color: #ffffff;
 }
 
+/* Decorative "live" dot: drawn, not text, so assistive tech doesn't announce it. */
+.source-badge.is-live::before {
+  content: '';
+  display: inline-block;
+  width: 0.5em;
+  height: 0.5em;
+  margin-right: 0.4em;
+  border-radius: 50%;
+  background: currentColor;
+  vertical-align: 0.05em;
+}
+
 .source-badge:empty {
   display: none;
 }

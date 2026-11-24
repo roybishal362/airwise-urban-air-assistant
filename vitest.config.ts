@@ -8,7 +8,7 @@ export default defineConfig({
     restoreMocks: true,
     coverage: {
       provider: 'v8',
-      include: ['src/**/*.ts', 'public/js/**/*.js'],
+      include: ['src/**/*.ts', 'scripts/**/*.ts', 'public/js/**/*.js'],
       exclude: [],
       reporter: ['text', 'html', 'json-summary'],
       thresholds: { lines: 97, functions: 97, statements: 97, branches: 90 },

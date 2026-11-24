@@ -2,6 +2,7 @@ import { Router, type Request } from 'express';
 import { rateLimit } from 'express-rate-limit';
 import type { Assistant } from '../services/assistant/assistantService.js';
 import type { BriefService } from '../services/briefService.js';
+import { approximatePlace } from './approxLocation.js';
 import { briefRequestSchema, chatRequestSchema, placesQuerySchema } from './schemas.js';
 
 export interface ApiDependencies {
@@ -33,6 +34,22 @@ export function createApiRouter(deps: ApiDependencies): Router {
 
   router.get('/health', (_req, res) => {
     res.json({ status: 'ok', assistant: deps.assistant.mode });
+  });
+
+  // Fallback for "Use my location" when the device cannot locate itself.
+  router.get('/locate', (req, res) => {
+    const place = approximatePlace(req.headers);
+    res.set('Cache-Control', 'private, no-store');
+    if (!place) {
+      res.status(404).json({
+        error: {
+          code: 'LOCATION_UNAVAILABLE',
+          message: 'Your approximate area is not available. Search for your city instead.',
+        },
+      });
+      return;
+    }
+    res.json({ place });
   });
 
   router.get('/places', async (req: Request, res) => {

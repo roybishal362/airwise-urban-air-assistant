@@ -3,6 +3,7 @@
 /*
 !api
 !src
+!scripts
 !public
 !package.json
 !package-lock.json

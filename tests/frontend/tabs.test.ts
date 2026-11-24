@@ -146,6 +146,9 @@ describe('landing versus app view', () => {
     });
     await app.ready;
     expect(document.body.dataset.view).toBe('landing');
+    expect(document.title).toBe('AirWise · Urban Air Quality Assistant for families');
+    $<HTMLButtonElement>('tab-impact').click(); // no plan yet: the title stays generic
+    expect(document.title).toBe('AirWise · Urban Air Quality Assistant for families');
     expect($('landing').hidden).toBe(false);
     expect($('results').hidden).toBe(true);
   });
@@ -170,6 +173,7 @@ describe('landing versus app view', () => {
       `NAQI ${brief.current.aqi} · ${brief.current.category.label}`,
     );
     expect($('location-source').textContent).toBe('Model estimate');
+    expect($('location-source').classList.contains('is-live')).toBe(false);
     expect(document.querySelector('.source-line')?.textContent).toMatch(/Modelled estimate/);
     $<HTMLButtonElement>('change-city').click();
     expect($('landing').hidden).toBe(false);
@@ -200,7 +204,11 @@ describe('landing versus app view', () => {
       Recognition: null,
     });
     await app.ready;
-    expect($('location-source').textContent).toBe('● Live station data');
+    expect($('location-source').textContent).toBe('Live station data');
+    expect($('location-source').classList.contains('is-live')).toBe(true);
+    expect(document.title).toBe('Today · Delhi · AirWise');
+    $<HTMLButtonElement>('tab-forecast').click();
+    expect(document.title).toBe('Forecast · Delhi · AirWise');
     expect(document.querySelector('.source-station')?.textContent).toMatch(/Measured at 06:00/);
   });
 });

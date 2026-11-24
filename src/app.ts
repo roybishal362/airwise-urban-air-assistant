@@ -11,14 +11,32 @@ import type { Logger } from './lib/logger.js';
 export interface AppDependencies extends ApiDependencies {
   logger: Logger;
   trustProxyHops: number;
+  /** Where the UI is served from (default: the readable sources in public/). */
+  staticDir?: string;
 }
 
-/** `src/` and `dist/` both sit next to `public/`. */
-export const PUBLIC_DIR = path.resolve(
-  path.dirname(fileURLToPath(import.meta.url)),
-  '..',
-  'public',
-);
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+
+/** Readable, unbundled UI sources (development). `src/` and `dist/` both sit next to it. */
+export const PUBLIC_DIR = path.join(ROOT, 'public');
+
+/** Production UI from `npm run build`: one hashed, minified JS and CSS file each. */
+export const WEB_BUILD_DIR = path.join(ROOT, 'dist', 'web');
+
+/** Hashed build output (/assets/name-HASH.ext) never changes, so it is cached for a year. */
+const HASHED_ASSET = /[\\/]assets[\\/][^\\/]+-[A-Z0-9]{8}\.(?:js|css)$/;
+
+/**
+ * - Hashed /assets/ files: cached for a year ("immutable"); a deploy changes the name.
+ * - HTML and the unbundled development modules: revalidated every time (cheap 304s
+ *   via ETag) so a deploy never mixes old and new files.
+ * - Icons and the manifest: a day.
+ */
+export function cacheControlFor(filePath: string): string {
+  if (HASHED_ASSET.test(filePath)) return 'public, max-age=31536000, immutable';
+  if (/\.(svg|webmanifest)$/.test(filePath)) return 'public, max-age=86400';
+  return 'no-cache';
+}
 
 /** App factory: all dependencies are injected, so tests run without network. */
 export function createApp(deps: AppDependencies): Express {
@@ -56,17 +74,11 @@ export function createApp(deps: AppDependencies): Express {
   );
 
   app.use(
-    express.static(PUBLIC_DIR, {
+    express.static(deps.staticDir ?? PUBLIC_DIR, {
       index: 'index.html',
       etag: true,
       lastModified: true,
-      setHeaders: (res, filePath) => {
-        // The UI is unbundled ES modules without hashed file names, so HTML,
-        // JS and CSS must revalidate (cheap 304s via ETag) to stay in sync
-        // after a deploy. Only static icons and the manifest are cached longer.
-        const longLived = /\.(svg|webmanifest)$/.test(filePath);
-        res.setHeader('Cache-Control', longLived ? 'public, max-age=86400' : 'no-cache');
-      },
+      setHeaders: (res, filePath) => res.setHeader('Cache-Control', cacheControlFor(filePath)),
     }),
   );
 

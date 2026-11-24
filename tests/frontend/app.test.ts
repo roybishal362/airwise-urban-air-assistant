@@ -189,20 +189,72 @@ describe('geolocation', () => {
     );
   });
 
-  it('handles refusal and missing support', () => {
-    const geolocation = {
+  const failing = (code: number) =>
+    ({
       getCurrentPosition: vi.fn((_ok: PositionCallback, fail: PositionErrorCallback) =>
-        fail({} as GeolocationPositionError),
+        fail({ code } as GeolocationPositionError),
       ),
-    } as unknown as Geolocation;
-    boot({ geolocation });
+    }) as unknown as Geolocation;
+  const NETWORK_AREA = { name: 'Delhi (approximate)', latitude: 28.65, longitude: 77.23 };
+
+  it('respects a blocked permission: explains how to allow it, no fallback', async () => {
+    const locate = vi.fn(async () => NETWORK_AREA);
+    const { api } = boot({
+      geolocation: failing(1),
+      api: makeApi({ locateApproximately: locate }),
+    });
     $<HTMLButtonElement>('geo-button').click();
-    expect($('status').textContent).toMatch(/Could not get your location/);
+    await flush();
+    expect($('status').textContent).toMatch(/Location is blocked for this site.*Site settings/);
+    expect($('status').getAttribute('aria-live')).toBe('assertive');
+    expect(document.activeElement).toBe($('place-input'));
+    expect(locate).not.toHaveBeenCalled();
+    expect(api.fetchBrief).not.toHaveBeenCalled();
+    expect($<HTMLButtonElement>('geo-button').disabled).toBe(false);
+  });
+
+  it('falls back to the approximate network area when the device cannot locate itself', async () => {
+    const locate = vi.fn(async () => NETWORK_AREA);
+    const { api } = boot({
+      geolocation: failing(2),
+      api: makeApi({ locateApproximately: locate }),
+    });
+    $<HTMLButtonElement>('geo-button').click();
+    expect($<HTMLButtonElement>('geo-button').getAttribute('aria-busy')).toBe('true');
+    await vi.waitFor(() => expect(api.fetchBrief).toHaveBeenCalled());
+    expect(api.fetchBrief).toHaveBeenCalledWith(
+      expect.objectContaining({ location: NETWORK_AREA }),
+    );
+    await flush();
+    expect($<HTMLButtonElement>('geo-button').getAttribute('aria-busy')).toBe('false');
+  });
+
+  it('says why and moves focus to search when every option fails', async () => {
+    boot({
+      geolocation: failing(3),
+      api: makeApi({ locateApproximately: vi.fn(async () => Promise.reject(new Error('404'))) }),
+    });
+    $<HTMLButtonElement>('geo-button').click();
+    await flush();
+    expect($('status').textContent).toBe(
+      'Finding your location took too long. Search for your city instead.',
+    );
+    expect(document.activeElement).toBe($('place-input'));
+  });
+
+  it('uses the network area when the browser has no geolocation, or explains without it', async () => {
+    const locate = vi.fn(async () => NETWORK_AREA);
+    const { api } = boot({ geolocation: null, api: makeApi({ locateApproximately: locate }) });
+    $<HTMLButtonElement>('geo-button').click();
+    await vi.waitFor(() => expect(api.fetchBrief).toHaveBeenCalled());
 
     loadPage();
-    boot({ geolocation: null });
+    boot({ geolocation: failing(2), api: makeApi() }); // no network fallback available
     $<HTMLButtonElement>('geo-button').click();
-    expect($('status').textContent).toMatch(/not available in this browser/);
+    await flush();
+    expect($('status').textContent).toMatch(
+      /^Your device could not work out its location.*Search for your city instead\.$/,
+    );
   });
 });
 
