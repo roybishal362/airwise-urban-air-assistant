@@ -8,7 +8,7 @@
       name="description"
       content="GenAI assistant that helps families and communities get through winter smog: low-emission daily routines, indoor air hacks and sustainable choices, with the impact of each choice in numbers."
     />
-    <meta name="theme-color" content="#0b5d4b" />
+    <meta name="theme-color" content="#0b3d35" />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="stylesheet" href="/css/styles.css" />
@@ -20,8 +20,16 @@
     <link rel="modulepreload" href="/js/format.js" />
     <link rel="modulepreload" href="/js/profileForm.js" />
     <link rel="modulepreload" href="/js/storage.js" />
+    <link rel="modulepreload" href="/js/community.js" />
+    <link rel="modulepreload" href="/js/controllers/search.js" />
+    <link rel="modulepreload" href="/js/controllers/profile.js" />
+    <link rel="modulepreload" href="/js/controllers/impact.js" />
+    <link rel="modulepreload" href="/js/controllers/share.js" />
+    <link rel="modulepreload" href="/js/controllers/voice.js" />
     <link rel="modulepreload" href="/js/render/index.js" />
+    <link rel="modulepreload" href="/js/render/icons.js" />
     <link rel="modulepreload" href="/js/render/now.js" />
+    <link rel="modulepreload" href="/js/render/glance.js" />
     <link rel="modulepreload" href="/js/render/family.js" />
     <link rel="modulepreload" href="/js/render/forecast.js" />
     <link rel="modulepreload" href="/js/render/routine.js" />
@@ -29,38 +37,189 @@
     <link rel="modulepreload" href="/js/render/impact.js" />
     <script type="module" src="/js/main.js"></script>
   </head>
-  <body>
+  <body data-aqi-level="none">
+    <!-- Icon sprite: decorative only, every use is aria-hidden next to visible text. -->
+    <svg class="sprite" aria-hidden="true" focusable="false">
+      <symbol id="i-search" viewBox="0 0 24 24">
+        <circle cx="11" cy="11" r="7" />
+        <path d="m21 21-4.3-4.3" />
+      </symbol>
+      <symbol id="i-pin" viewBox="0 0 24 24">
+        <path d="M12 21s-7-6.2-7-11a7 7 0 1 1 14 0c0 4.8-7 11-7 11z" />
+        <circle cx="12" cy="10" r="2.5" />
+      </symbol>
+      <symbol id="i-wind" viewBox="0 0 24 24">
+        <path d="M3 8h10a3 3 0 1 0-3-3M3 12h15a3 3 0 1 1-3 3M3 16h7" />
+      </symbol>
+      <symbol id="i-mask" viewBox="0 0 24 24">
+        <path d="M4 9c3-2 13-2 16 0v4c0 3-4 6-8 6s-8-3-8-6z" />
+        <path d="M4 10H2m20 0h-2M8 12h8M9 15h6" />
+      </symbol>
+      <symbol id="i-window" viewBox="0 0 24 24">
+        <rect x="4" y="3" width="16" height="18" rx="1.5" />
+        <path d="M12 3v18M4 12h16" />
+      </symbol>
+      <symbol id="i-run" viewBox="0 0 24 24">
+        <circle cx="14" cy="4.5" r="2" />
+        <path d="m6 21 3-5 3 2 1-5 3 3h3M10 11l2-4 4 1" />
+      </symbol>
+      <symbol id="i-child" viewBox="0 0 24 24">
+        <circle cx="12" cy="7" r="3" />
+        <path d="M8 21v-5l-2-3 3-2h6l3 2-2 3v5" />
+      </symbol>
+      <symbol id="i-adult" viewBox="0 0 24 24">
+        <circle cx="12" cy="6" r="3" />
+        <path d="M6 21v-5a6 6 0 0 1 12 0v5" />
+      </symbol>
+      <symbol id="i-senior" viewBox="0 0 24 24">
+        <circle cx="11" cy="5" r="2.5" />
+        <path d="M8 21v-6l-1-4 4-3 3 2 2 3M17 13v8" />
+      </symbol>
+      <symbol id="i-train" viewBox="0 0 24 24">
+        <rect x="5" y="3" width="14" height="14" rx="3" />
+        <path d="M5 10h14M8 21l2-4m6 4-2-4" />
+      </symbol>
+      <symbol id="i-bus" viewBox="0 0 24 24">
+        <rect x="4" y="3" width="16" height="15" rx="3" />
+        <path d="M4 11h16M8 21v-3m8 3v-3" />
+      </symbol>
+      <symbol id="i-car" viewBox="0 0 24 24">
+        <path d="M4 15v-3l2-5h12l2 5v3z" />
+        <path d="M4 12h16" />
+        <circle cx="8" cy="17" r="2" />
+        <circle cx="16" cy="17" r="2" />
+      </symbol>
+      <symbol id="i-scooter" viewBox="0 0 24 24">
+        <circle cx="6" cy="17" r="2.5" />
+        <circle cx="18" cy="17" r="2.5" />
+        <path d="M8.5 17h7l2-8h3M15 9h-4l-2 4" />
+      </symbol>
+      <symbol id="i-auto" viewBox="0 0 24 24">
+        <path d="M3 16V9a5 5 0 0 1 5-5h6l5 6v6z" />
+        <path d="M3 11h16" />
+        <circle cx="7" cy="17" r="2" />
+        <circle cx="17" cy="17" r="2" />
+      </symbol>
+      <symbol id="i-bike" viewBox="0 0 24 24">
+        <circle cx="6" cy="16" r="3.5" />
+        <circle cx="18" cy="16" r="3.5" />
+        <path d="m6 16 4-8h5l3 8M8 8h3m4 0 2-3" />
+      </symbol>
+      <symbol id="i-walk" viewBox="0 0 24 24">
+        <circle cx="13" cy="4" r="2" />
+        <path d="m9 21 2-6 3 2v4M7 12l3-4h4l2 4M11 15l1-7" />
+      </symbol>
+      <symbol id="i-home" viewBox="0 0 24 24">
+        <path d="m3 11 9-8 9 8M5 10v10h14V10" />
+        <path d="M10 20v-5h4v5" />
+      </symbol>
+      <symbol id="i-cook" viewBox="0 0 24 24">
+        <path d="M4 10h16v4a6 6 0 0 1-6 6h-4a6 6 0 0 1-6-6z" />
+        <path d="M2 10h20M9 6c0-1 1-1 1-2m4 2c0-1 1-1 1-2" />
+      </symbol>
+      <symbol id="i-bed" viewBox="0 0 24 24">
+        <path d="M3 19V6m0 8h18v5M3 14h18v-1a3 3 0 0 0-3-3h-7v4" />
+        <circle cx="7" cy="11" r="2" />
+      </symbol>
+      <symbol id="i-flame" viewBox="0 0 24 24">
+        <path d="M12 21c-4 0-6-3-6-6 0-4 4-6 4-10 3 2 8 6 8 10 0 3-2 6-6 6z" />
+      </symbol>
+      <symbol id="i-gas" viewBox="0 0 24 24">
+        <rect x="7" y="6" width="10" height="15" rx="4" />
+        <path d="M10 6V3h4v3" />
+      </symbol>
+      <symbol id="i-bolt" viewBox="0 0 24 24"><path d="M13 2 4 14h7l-1 8 9-12h-7z" /></symbol>
+      <symbol id="i-none" viewBox="0 0 24 24">
+        <circle cx="12" cy="12" r="8" />
+        <path d="m6.5 17.5 11-11" />
+      </symbol>
+      <symbol id="i-purifier" viewBox="0 0 24 24">
+        <rect x="6" y="3" width="12" height="18" rx="3" />
+        <path d="M9 8h6M9 11h6M9 14h6" />
+      </symbol>
+      <symbol id="i-leaf" viewBox="0 0 24 24">
+        <path d="M5 19c0-9 6-14 15-14 0 9-5 15-14 15" />
+        <path d="m5 19 9-9" />
+      </symbol>
+      <symbol id="i-tree" viewBox="0 0 24 24"><path d="M12 21v-5M6 16h12L12 3z" /></symbol>
+      <symbol id="i-users" viewBox="0 0 24 24">
+        <circle cx="9" cy="8" r="3" />
+        <path d="M3 20c0-3 3-5 6-5s6 2 6 5" />
+        <circle cx="17" cy="9" r="2.5" />
+        <path d="M16 15c3 0 5 2 5 4" />
+      </symbol>
+      <symbol id="i-heart" viewBox="0 0 24 24">
+        <path d="M12 20s-8-5-8-11a4.5 4.5 0 0 1 8-2.5A4.5 4.5 0 0 1 20 9c0 6-8 11-8 11z" />
+      </symbol>
+      <symbol id="i-mic" viewBox="0 0 24 24">
+        <rect x="9" y="3" width="6" height="11" rx="3" />
+        <path d="M5 11a7 7 0 0 0 14 0M12 18v3" />
+      </symbol>
+      <symbol id="i-send" viewBox="0 0 24 24"><path d="m4 12 16-8-6 16-2-6z" /></symbol>
+      <symbol id="i-share" viewBox="0 0 24 24">
+        <circle cx="6" cy="12" r="2.5" />
+        <circle cx="18" cy="6" r="2.5" />
+        <circle cx="18" cy="18" r="2.5" />
+        <path d="m8.2 10.8 7.6-3.6M8.2 13.2l7.6 3.6" />
+      </symbol>
+      <symbol id="i-speaker" viewBox="0 0 24 24">
+        <path d="M4 9h4l5-4v14l-5-4H4z" />
+        <path d="M17 9a4 4 0 0 1 0 6" />
+      </symbol>
+      <symbol id="i-alert" viewBox="0 0 24 24">
+        <path d="M12 3 2 20h20z" />
+        <path d="M12 10v4m0 3v.01" />
+      </symbol>
+      <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12 5 5 9-10" /></symbol>
+      <symbol id="i-spark" viewBox="0 0 24 24">
+        <path d="m12 3 2 5 5 2-5 2-2 5-2-5-5-2 5-2z" />
+        <path d="M19 15l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8z" />
+      </symbol>
+      <symbol id="i-cigarette" viewBox="0 0 24 24">
+        <rect x="2" y="13" width="16" height="4" rx="1" />
+        <path d="M18 13v4M21 13v4M19 10c0-2 2-2 2-4" />
+      </symbol>
+      <symbol id="i-globe" viewBox="0 0 24 24">
+        <circle cx="12" cy="12" r="9" />
+        <path d="M3 12h18M12 3c3 3 3 15 0 18M12 3c-3 3-3 15 0 18" />
+      </symbol>
+    </svg>
+
     <a class="skip-link" href="#main">Skip to main content</a>
 
-    <header class="site-header">
-      <div class="brand">
+    <header class="topbar">
+      <a class="brand" href="/" aria-label="AirWise home">
         <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true" focusable="false">
           <circle cx="16" cy="16" r="15" />
           <path d="M7 19c4-6 7 2 11-3s6-2 7-1M7 13c4-4 6 1 9-2" />
         </svg>
-        <span class="brand-name">AirWise</span>
-      </div>
-      <p class="tagline">Your family's guide through winter smog</p>
+        <span>AirWise</span>
+      </a>
+      <nav class="topnav" aria-label="Main">
+        <a href="#family-setup">Family</a>
+        <a href="#results">Today's plan</a>
+        <a href="#assistant">Ask AirWise</a>
+      </nav>
     </header>
 
     <main id="main" tabindex="-1">
-      <section class="panel intro" aria-labelledby="setup-heading">
-        <h1 id="setup-heading">Plan a cleaner-air day for your family</h1>
-        <p class="lede">
-          Tell AirWise where you live and how your household lives. It reads the live air-quality
-          and weather forecast, then builds a low-emission routine, indoor-air fixes and greener
-          choices, showing what each one changes in numbers.
-        </p>
+      <section class="hero" aria-labelledby="hero-title">
+        <div class="hero-inner">
+          <p class="eyebrow">
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-wind" /></svg>
+            Winter smog assistant for families and communities
+          </p>
+          <h1 id="hero-title">Breathe easier this winter.</h1>
+          <p class="lede">
+            Live air quality turned into a family-safe daily plan, indoor-air fixes and greener
+            choices, with the impact of every choice in numbers. Ask anything in English or Hindi.
+          </p>
 
-        <form
-          id="place-form"
-          class="place-form"
-          role="search"
-          aria-label="Find your city"
-          novalidate
-        >
-          <label for="place-input">City or neighbourhood</label>
-          <div class="input-row">
+          <form id="place-form" class="search" role="search" aria-label="Find your city" novalidate>
+            <label for="place-input" class="visually-hidden">City or neighbourhood</label>
+            <svg class="icon search-icon" aria-hidden="true" focusable="false">
+              <use href="#i-search" />
+            </svg>
             <input
               id="place-input"
               name="q"
@@ -70,138 +229,498 @@
               minlength="2"
               maxlength="80"
               required
+              placeholder="Search your city or neighbourhood"
               aria-describedby="place-hint"
             />
-            <button type="submit">Search</button>
-            <button type="button" id="geo-button" class="secondary">Use my location</button>
+            <button type="submit" class="btn-primary">Search</button>
+          </form>
+          <div class="hero-actions">
+            <button type="button" id="geo-button" class="btn-ghost">
+              <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-pin" /></svg>
+              Use my location
+            </button>
+            <div class="quick-cities" role="group" aria-label="Popular cities">
+              <button
+                type="button"
+                class="chip-city"
+                data-city="Delhi"
+                data-lat="28.65195"
+                data-lon="77.23149"
+                data-country="IN"
+              >
+                Delhi
+              </button>
+              <button
+                type="button"
+                class="chip-city"
+                data-city="Mumbai"
+                data-lat="19.07283"
+                data-lon="72.88261"
+                data-country="IN"
+              >
+                Mumbai
+              </button>
+              <button
+                type="button"
+                class="chip-city"
+                data-city="Kolkata"
+                data-lat="22.56263"
+                data-lon="88.36304"
+                data-country="IN"
+              >
+                Kolkata
+              </button>
+              <button
+                type="button"
+                class="chip-city"
+                data-city="Lucknow"
+                data-lat="26.83928"
+                data-lon="80.92313"
+                data-country="IN"
+              >
+                Lucknow
+              </button>
+              <button
+                type="button"
+                class="chip-city"
+                data-city="Patna"
+                data-lat="25.59408"
+                data-lon="85.13563"
+                data-country="IN"
+              >
+                Patna
+              </button>
+              <button
+                type="button"
+                class="chip-city"
+                data-city="Bengaluru"
+                data-lat="12.97194"
+                data-lon="77.59369"
+                data-country="IN"
+              >
+                Bengaluru
+              </button>
+            </div>
           </div>
-          <p id="place-hint" class="hint">Try "Delhi", "Lucknow", "Kolkata" or your own city.</p>
+          <p id="place-hint" class="hero-hint">Pick a city above, or search for your own.</p>
           <ul id="place-results" class="place-results" aria-label="Matching places" hidden></ul>
-        </form>
+        </div>
+        <svg class="hero-art" viewBox="0 0 600 260" aria-hidden="true" focusable="false">
+          <path
+            class="smog smog-3"
+            d="M0 120c80-30 160 20 240 0s160-40 240-10 120 20 120 20V260H0z"
+          />
+          <path
+            class="skyline"
+            d="M0 260V190h40v-30h30v40h25v-70h45v70h20v-40h35v60h30v-90h50v90h25v-50h40v50h30v-30h45v-40h40v70h25v-25h40v35h40v-60h40v60V260z"
+          />
+          <path class="smog smog-2" d="M0 170c90-25 170 15 260-5s180-35 250-5 90 15 90 15V260H0z" />
+          <path class="smog smog-1" d="M0 215c100-20 200 15 300 0s200-25 300 5V260H0z" />
+        </svg>
+      </section>
 
-        <p id="current-place" class="current-place" hidden></p>
+      <p id="status" class="status" role="status" aria-live="polite"></p>
+      <p id="current-place" class="current-place" hidden></p>
 
-        <details id="profile-details" class="profile" open>
-          <summary>Your household and lifestyle</summary>
+      <section id="family-setup" class="card setup" aria-labelledby="family-setup-heading">
+        <div class="setup-head">
+          <div>
+            <h2 id="family-setup-heading">
+              <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-users" /></svg>
+              Your family
+            </h2>
+            <ul id="family-summary" class="summary-pills" aria-label="Household summary"></ul>
+            <p id="family-hint" class="hint" aria-live="polite"></p>
+          </div>
+          <button
+            type="button"
+            id="edit-family"
+            class="btn-ghost"
+            aria-expanded="true"
+            aria-controls="profile-panel"
+          >
+            Edit family
+          </button>
+        </div>
+
+        <div id="profile-panel">
           <form id="profile-form" class="profile-form" novalidate>
             <fieldset>
               <legend>Who lives with you?</legend>
-              <div class="grid-3">
-                <label
-                  >Adults (18–59)<input
-                    name="adults"
-                    type="number"
-                    min="0"
-                    max="20"
-                    step="1"
-                    inputmode="numeric"
-                    required
-                /></label>
-                <label
-                  >Children (under 18)<input
-                    name="children"
-                    type="number"
-                    min="0"
-                    max="20"
-                    step="1"
-                    inputmode="numeric"
-                    required
-                /></label>
-                <label
-                  >Older adults (60+)<input
-                    name="seniors"
-                    type="number"
-                    min="0"
-                    max="20"
-                    step="1"
-                    inputmode="numeric"
-                    required
-                /></label>
+              <div class="steppers">
+                <div class="stepper">
+                  <svg class="icon icon-lg" aria-hidden="true" focusable="false">
+                    <use href="#i-adult" />
+                  </svg>
+                  <label for="adults-input">Adults <span class="sub">18–59</span></label>
+                  <div class="stepper-controls">
+                    <button
+                      type="button"
+                      class="step"
+                      data-target="adults"
+                      data-step="-1"
+                      aria-label="Fewer adults"
+                    >
+                      −
+                    </button>
+                    <input
+                      id="adults-input"
+                      name="adults"
+                      type="number"
+                      min="0"
+                      max="20"
+                      step="1"
+                      inputmode="numeric"
+                      required
+                    />
+                    <button
+                      type="button"
+                      class="step"
+                      data-target="adults"
+                      data-step="1"
+                      aria-label="More adults"
+                    >
+                      +
+                    </button>
+                  </div>
+                </div>
+                <div class="stepper">
+                  <svg class="icon icon-lg" aria-hidden="true" focusable="false">
+                    <use href="#i-child" />
+                  </svg>
+                  <label for="children-input">Children <span class="sub">under 18</span></label>
+                  <div class="stepper-controls">
+                    <button
+                      type="button"
+                      class="step"
+                      data-target="children"
+                      data-step="-1"
+                      aria-label="Fewer children"
+                    >
+                      −
+                    </button>
+                    <input
+                      id="children-input"
+                      name="children"
+                      type="number"
+                      min="0"
+                      max="20"
+                      step="1"
+                      inputmode="numeric"
+                      required
+                    />
+                    <button
+                      type="button"
+                      class="step"
+                      data-target="children"
+                      data-step="1"
+                      aria-label="More children"
+                    >
+                      +
+                    </button>
+                  </div>
+                </div>
+                <div class="stepper">
+                  <svg class="icon icon-lg" aria-hidden="true" focusable="false">
+                    <use href="#i-senior" />
+                  </svg>
+                  <label for="seniors-input">Older adults <span class="sub">60+</span></label>
+                  <div class="stepper-controls">
+                    <button
+                      type="button"
+                      class="step"
+                      data-target="seniors"
+                      data-step="-1"
+                      aria-label="Fewer older adults"
+                    >
+                      −
+                    </button>
+                    <input
+                      id="seniors-input"
+                      name="seniors"
+                      type="number"
+                      min="0"
+                      max="20"
+                      step="1"
+                      inputmode="numeric"
+                      required
+                    />
+                    <button
+                      type="button"
+                      class="step"
+                      data-target="seniors"
+                      data-step="1"
+                      aria-label="More older adults"
+                    >
+                      +
+                    </button>
+                  </div>
+                </div>
               </div>
             </fieldset>
 
             <fieldset>
               <legend>Health conditions at home <span class="optional">(optional)</span></legend>
-              <div class="checks">
-                <label><input type="checkbox" name="conditions" value="asthma" /> Asthma</label>
-                <label
-                  ><input type="checkbox" name="conditions" value="copd" /> COPD / chronic
-                  bronchitis</label
+              <div class="toggle-chips">
+                <label class="toggle-chip"
+                  ><input type="checkbox" name="conditions" value="asthma" /><span
+                    >Asthma</span
+                  ></label
                 >
-                <label
-                  ><input type="checkbox" name="conditions" value="heart_disease" /> Heart
-                  disease</label
+                <label class="toggle-chip"
+                  ><input type="checkbox" name="conditions" value="copd" /><span>COPD</span></label
                 >
-                <label><input type="checkbox" name="conditions" value="diabetes" /> Diabetes</label>
-                <label
-                  ><input type="checkbox" name="conditions" value="pregnancy" /> Pregnancy</label
+                <label class="toggle-chip"
+                  ><input type="checkbox" name="conditions" value="heart_disease" /><span
+                    >Heart disease</span
+                  ></label
                 >
-                <label
-                  ><input type="checkbox" name="conditions" value="allergies" /> Allergies</label
+                <label class="toggle-chip"
+                  ><input type="checkbox" name="conditions" value="diabetes" /><span
+                    >Diabetes</span
+                  ></label
+                >
+                <label class="toggle-chip"
+                  ><input type="checkbox" name="conditions" value="pregnancy" /><span
+                    >Pregnancy</span
+                  ></label
+                >
+                <label class="toggle-chip"
+                  ><input type="checkbox" name="conditions" value="allergies" /><span
+                    >Allergies</span
+                  ></label
                 >
               </div>
             </fieldset>
 
             <fieldset>
-              <legend>Daily life</legend>
-              <div class="grid-2">
-                <label
-                  >Main commute
-                  <select name="commuteMode">
-                    <option value="two_wheeler">Motorbike / scooter</option>
-                    <option value="car_petrol">Petrol car</option>
-                    <option value="car_diesel">Diesel car</option>
-                    <option value="car_cng">CNG car</option>
-                    <option value="ev_car">Electric car</option>
-                    <option value="auto_rickshaw">Auto-rickshaw</option>
-                    <option value="bus">Bus</option>
-                    <option value="metro">Metro / local train</option>
-                    <option value="bicycle">Bicycle</option>
-                    <option value="walk">Walk</option>
-                    <option value="none">No regular commute</option>
-                  </select>
-                </label>
-                <label
-                  >One-way distance (km)
-                  <input
-                    name="commuteKm"
-                    type="number"
-                    min="0"
-                    max="200"
-                    step="0.5"
-                    inputmode="decimal"
-                    required
-                  />
-                </label>
-                <label
-                  >Cooking fuel
-                  <select name="cookingFuel">
-                    <option value="lpg">LPG cylinder</option>
-                    <option value="piped_gas">Piped gas (PNG)</option>
-                    <option value="electric">Induction / electric</option>
-                    <option value="biomass">Wood, dung or crop waste</option>
-                    <option value="kerosene">Kerosene</option>
-                  </select>
-                </label>
-                <label
-                  >Winter heating
-                  <select name="heating">
-                    <option value="none">None</option>
-                    <option value="electric">Electric heater</option>
-                    <option value="gas">Gas heater</option>
-                    <option value="wood_or_coal">Coal or wood (angithi)</option>
-                    <option value="kerosene">Kerosene heater</option>
-                  </select>
-                </label>
-              </div>
-              <div class="checks">
-                <label
-                  ><input type="checkbox" name="workFromHomePossible" /> I can work from home some
-                  days</label
+              <legend>How do you usually commute?</legend>
+              <div class="tiles">
+                <label class="tile"
+                  ><input type="radio" name="commuteMode" value="two_wheeler" /><svg
+                    class="icon"
+                    aria-hidden="true"
+                    focusable="false"
+                  >
+                    <use href="#i-scooter" /></svg
+                  ><span>Scooter / bike</span></label
                 >
-                <label
-                  ><input type="checkbox" name="exercisesOutdoors" /> Someone exercises outdoors
-                  most days</label
+                <label class="tile"
+                  ><input type="radio" name="commuteMode" value="car_petrol" /><svg
+                    class="icon"
+                    aria-hidden="true"
+                    focusable="false"
+                  >
+                    <use href="#i-car" /></svg
+                  ><span>Petrol car</span></label
+                >
+                <label class="tile"
+                  ><input type="radio" name="commuteMode" value="car_diesel" /><svg
+                    class="icon"
+                    aria-hidden="true"
+                    focusable="false"
+                  >
+                    <use href="#i-car" /></svg
+                  ><span>Diesel car</span></label
+                >
+                <label class="tile"
+                  ><input type="radio" name="commuteMode" value="car_cng" /><svg
+                    class="icon"
+                    aria-hidden="true"
+                    focusable="false"
+                  >
+                    <use href="#i-car" /></svg
+                  ><span>CNG car</span></label
+                >
+                <label class="tile"
+                  ><input type="radio" name="commuteMode" value="ev_car" /><svg
+                    class="icon"
+                    aria-hidden="true"
+                    focusable="false"
+                  >
+                    <use href="#i-bolt" /></svg
+                  ><span>Electric car</span></label
+                >
+                <label class="tile"
+                  ><input type="radio" name="commuteMode" value="auto_rickshaw" /><svg
+                    class="icon"
+                    aria-hidden="true"
+                    focusable="false"
+                  >
+                    <use href="#i-auto" /></svg
+                  ><span>Auto-rickshaw</span></label
+                >
+                <label class="tile"
+                  ><input type="radio" name="commuteMode" value="bus" /><svg
+                    class="icon"
+                    aria-hidden="true"
+                    focusable="false"
+                  >
+                    <use href="#i-bus" /></svg
+                  ><span>Bus</span></label
+                >
+                <label class="tile"
+                  ><input type="radio" name="commuteMode" value="metro" /><svg
+                    class="icon"
+                    aria-hidden="true"
+                    focusable="false"
+                  >
+                    <use href="#i-train" /></svg
+                  ><span>Metro / train</span></label
+                >
+                <label class="tile"
+                  ><input type="radio" name="commuteMode" value="bicycle" /><svg
+                    class="icon"
+                    aria-hidden="true"
+                    focusable="false"
+                  >
+                    <use href="#i-bike" /></svg
+                  ><span>Bicycle</span></label
+                >
+                <label class="tile"
+                  ><input type="radio" name="commuteMode" value="walk" /><svg
+                    class="icon"
+                    aria-hidden="true"
+                    focusable="false"
+                  >
+                    <use href="#i-walk" /></svg
+                  ><span>Walk</span></label
+                >
+                <label class="tile"
+                  ><input type="radio" name="commuteMode" value="none" /><svg
+                    class="icon"
+                    aria-hidden="true"
+                    focusable="false"
+                  >
+                    <use href="#i-home" /></svg
+                  ><span>No commute</span></label
+                >
+              </div>
+              <div class="inline-fields">
+                <label for="commute-km">One-way distance (km)</label>
+                <input
+                  id="commute-km"
+                  name="commuteKm"
+                  type="number"
+                  min="0"
+                  max="200"
+                  step="0.5"
+                  inputmode="decimal"
+                  required
+                />
+              </div>
+              <div class="switches">
+                <label class="switch"
+                  ><input type="checkbox" name="workFromHomePossible" role="switch" /><span
+                    >I can work from home some days</span
+                  ></label
+                >
+                <label class="switch"
+                  ><input type="checkbox" name="exercisesOutdoors" role="switch" /><span
+                    >Someone exercises outdoors most days</span
+                  ></label
+                >
+              </div>
+            </fieldset>
+
+            <fieldset>
+              <legend>Cooking fuel</legend>
+              <div class="tiles tiles-sm">
+                <label class="tile"
+                  ><input type="radio" name="cookingFuel" value="lpg" /><svg
+                    class="icon"
+                    aria-hidden="true"
+                    focusable="false"
+                  >
+                    <use href="#i-gas" /></svg
+                  ><span>LPG</span></label
+                >
+                <label class="tile"
+                  ><input type="radio" name="cookingFuel" value="piped_gas" /><svg
+                    class="icon"
+                    aria-hidden="true"
+                    focusable="false"
+                  >
+                    <use href="#i-gas" /></svg
+                  ><span>Piped gas</span></label
+                >
+                <label class="tile"
+                  ><input type="radio" name="cookingFuel" value="electric" /><svg
+                    class="icon"
+                    aria-hidden="true"
+                    focusable="false"
+                  >
+                    <use href="#i-bolt" /></svg
+                  ><span>Induction</span></label
+                >
+                <label class="tile"
+                  ><input type="radio" name="cookingFuel" value="biomass" /><svg
+                    class="icon"
+                    aria-hidden="true"
+                    focusable="false"
+                  >
+                    <use href="#i-flame" /></svg
+                  ><span>Wood / dung</span></label
+                >
+                <label class="tile"
+                  ><input type="radio" name="cookingFuel" value="kerosene" /><svg
+                    class="icon"
+                    aria-hidden="true"
+                    focusable="false"
+                  >
+                    <use href="#i-flame" /></svg
+                  ><span>Kerosene</span></label
+                >
+              </div>
+            </fieldset>
+
+            <fieldset>
+              <legend>Winter heating</legend>
+              <div class="tiles tiles-sm">
+                <label class="tile"
+                  ><input type="radio" name="heating" value="none" /><svg
+                    class="icon"
+                    aria-hidden="true"
+                    focusable="false"
+                  >
+                    <use href="#i-none" /></svg
+                  ><span>None</span></label
+                >
+                <label class="tile"
+                  ><input type="radio" name="heating" value="electric" /><svg
+                    class="icon"
+                    aria-hidden="true"
+                    focusable="false"
+                  >
+                    <use href="#i-bolt" /></svg
+                  ><span>Electric</span></label
+                >
+                <label class="tile"
+                  ><input type="radio" name="heating" value="gas" /><svg
+                    class="icon"
+                    aria-hidden="true"
+                    focusable="false"
+                  >
+                    <use href="#i-gas" /></svg
+                  ><span>Gas heater</span></label
+                >
+                <label class="tile"
+                  ><input type="radio" name="heating" value="wood_or_coal" /><svg
+                    class="icon"
+                    aria-hidden="true"
+                    focusable="false"
+                  >
+                    <use href="#i-flame" /></svg
+                  ><span>Coal / wood</span></label
+                >
+                <label class="tile"
+                  ><input type="radio" name="heating" value="kerosene" /><svg
+                    class="icon"
+                    aria-hidden="true"
+                    focusable="false"
+                  >
+                    <use href="#i-flame" /></svg
+                  ><span>Kerosene</span></label
                 >
               </div>
             </fieldset>
@@ -209,9 +728,10 @@
             <fieldset>
               <legend>Home</legend>
               <div class="grid-2">
-                <label
-                  >Main room size (m²)
+                <div class="field">
+                  <label for="room-area">Main room size (m²)</label>
                   <input
+                    id="room-area"
                     name="roomAreaSqm"
                     type="number"
                     min="4"
@@ -221,10 +741,14 @@
                     required
                     aria-describedby="room-hint"
                   />
-                </label>
-                <label
-                  >Purifier CADR (m³/h)
+                  <p id="room-hint" class="hint">
+                    Where the family sleeps. A 3 m × 4 m bedroom is 12 m².
+                  </p>
+                </div>
+                <div class="field">
+                  <label for="cadr">Purifier CADR (m³/h)</label>
                   <input
+                    id="cadr"
                     name="purifierCadrM3h"
                     type="number"
                     min="0"
@@ -233,24 +757,24 @@
                     inputmode="numeric"
                     aria-describedby="cadr-hint"
                   />
-                </label>
+                  <p id="cadr-hint" class="hint">
+                    Printed on the purifier box. Leave 0 if unknown.
+                  </p>
+                </div>
               </div>
-              <p id="room-hint" class="hint">
-                The room where the family sleeps or spends most time. A 3 m × 4 m bedroom is 12 m².
-              </p>
-              <label class="inline"
-                ><input type="checkbox" name="hasAirPurifier" /> We have an air purifier</label
+              <label class="switch"
+                ><input type="checkbox" name="hasAirPurifier" role="switch" /><span
+                  >We have an air purifier</span
+                ></label
               >
-              <p id="cadr-hint" class="hint">
-                CADR is printed on the purifier box. Leave 0 if unknown.
-              </p>
             </fieldset>
 
             <fieldset>
               <legend>Community</legend>
-              <label
-                >Households acting together
+              <div class="field">
+                <label for="community">Households acting together</label>
                 <input
+                  id="community"
                   name="communityHouseholds"
                   type="number"
                   min="1"
@@ -260,59 +784,65 @@
                   required
                   aria-describedby="community-hint"
                 />
-              </label>
-              <p id="community-hint" class="hint">
-                E.g. your apartment society or street. We multiply the impact of each action.
-              </p>
+                <p id="community-hint" class="hint">
+                  Your apartment society, street or school. Every impact is multiplied.
+                </p>
+              </div>
             </fieldset>
 
-            <label class="standard-select"
-              >AQI scale
-              <select name="standard">
+            <div class="field standard-select">
+              <label for="standard">AQI scale</label>
+              <select id="standard" name="standard">
                 <option value="auto">Automatic (India NAQI in India, US AQI elsewhere)</option>
                 <option value="in">India National AQI (CPCB)</option>
                 <option value="us">US EPA AQI</option>
               </select>
-            </label>
+            </div>
 
             <p class="privacy-note">
-              Saved only in this browser. Health details are sent only to work out your advice and
+              Saved only in this browser. Health details are used only to work out your advice and
               are never stored on our server.
             </p>
             <p id="profile-error" class="form-error" role="alert" hidden></p>
-            <button type="submit">Update my plan</button>
+            <button type="submit" class="btn-primary btn-wide">Update my plan</button>
           </form>
-        </details>
+        </div>
       </section>
-
-      <p id="status" class="status" role="status" aria-live="polite"></p>
 
       <div id="results" class="results" hidden>
         <nav class="section-nav" aria-label="Plan sections">
           <ul>
             <li><a href="#now">Air now</a></li>
+            <li><a href="#glance">At a glance</a></li>
             <li><a href="#family">Family</a></li>
+            <li><a href="#forecast">Forecast</a></li>
             <li><a href="#routine">Routine</a></li>
             <li><a href="#indoor">Indoors</a></li>
             <li><a href="#impact">Impact</a></li>
-            <li><a href="#assistant">Ask</a></li>
           </ul>
         </nav>
 
-        <section id="now" class="card" aria-labelledby="now-heading" tabindex="-1">
+        <section id="now" class="card card-now" aria-labelledby="now-heading" tabindex="-1">
           <h2 id="now-heading">Air right now</h2>
           <div id="now-body"></div>
         </section>
 
-        <section id="family" class="card" aria-labelledby="family-heading">
-          <h2 id="family-heading">What it means for your family</h2>
-          <div id="family-body"></div>
+        <section id="glance" class="glance-section" aria-labelledby="glance-heading">
+          <h2 id="glance-heading">Today at a glance</h2>
+          <div id="glance-body"></div>
         </section>
 
-        <section id="forecast" class="card" aria-labelledby="forecast-heading">
-          <h2 id="forecast-heading">Next 24 hours and the smog trap</h2>
-          <div id="forecast-body"></div>
-        </section>
+        <div class="dash-grid">
+          <section id="family" class="card" aria-labelledby="family-heading">
+            <h2 id="family-heading">What it means for your family</h2>
+            <div id="family-body"></div>
+          </section>
+
+          <section id="forecast" class="card" aria-labelledby="forecast-heading">
+            <h2 id="forecast-heading">Next 24 hours and the smog trap</h2>
+            <div id="forecast-body"></div>
+          </section>
+        </div>
 
         <section id="routine" class="card" aria-labelledby="routine-heading">
           <h2 id="routine-heading">Today's low-emission, low-exposure routine</h2>
@@ -330,20 +860,29 @@
         </section>
 
         <div class="share-row">
-          <button type="button" id="share-button" class="secondary">
+          <button type="button" id="share-button" class="btn-ghost">
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-share" /></svg>
             Share today's plan with family
           </button>
-          <button type="button" id="speak-button" class="secondary" hidden>
+          <button type="button" id="speak-button" class="btn-ghost" hidden>
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-speaker" /></svg>
             Read summary aloud
           </button>
         </div>
       </div>
 
       <section id="assistant" class="card chat" aria-labelledby="chat-heading">
-        <h2 id="chat-heading">Ask AirWise</h2>
-        <p id="chat-mode" class="hint">
-          Choose a place above, then ask anything about your air, home or choices.
-        </p>
+        <div class="chat-head">
+          <span class="avatar" aria-hidden="true"
+            ><svg class="icon" focusable="false"><use href="#i-spark" /></svg
+          ></span>
+          <div>
+            <h2 id="chat-heading">Ask AirWise</h2>
+            <p id="chat-mode" class="hint">
+              Choose a place above, then ask anything about your air, home or choices.
+            </p>
+          </div>
+        </div>
         <div
           id="chat-log"
           class="chat-log"
@@ -365,12 +904,30 @@
             rows="2"
             maxlength="600"
             required
-            placeholder="e.g. Can my kids play outside this evening?"
+            placeholder="e.g. Can my kids play outside this evening? / क्या आज बच्चे बाहर खेल सकते हैं?"
           ></textarea>
-          <button type="submit" id="chat-send">Send</button>
+          <button
+            type="button"
+            id="voice-button"
+            class="btn-icon"
+            aria-pressed="false"
+            aria-label="Ask by voice"
+            hidden
+          >
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-mic" /></svg>
+          </button>
+          <button type="submit" id="chat-send" class="btn-primary">
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-send" /></svg>
+            Send
+          </button>
         </form>
       </section>
     </main>
+
+    <a class="fab" href="#assistant">
+      <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-spark" /></svg>
+      Ask AirWise
+    </a>
 
     <footer class="site-footer">
       <p>

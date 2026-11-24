@@ -1,6 +1,8 @@
 // @ts-check
+import { pledgeTotals } from '../community.js';
 import { el } from '../dom.js';
 import { formatCo2, formatMass, formatNumber, signedPct } from '../format.js';
+import { icon } from './icons.js';
 
 /**
  * @typedef {import('../../../src/domain/brief.js').AirBrief} Brief
@@ -9,25 +11,73 @@ import { formatCo2, formatMass, formatNumber, signedPct } from '../format.js';
  */
 
 /**
- * Headline: what the whole plan avoids per year, for one home or the community.
+ * @param {string} name
+ * @param {string} value
+ * @param {string} label
+ */
+const stat = (name, value, label) =>
+  el(
+    'div',
+    { className: 'stat' },
+    icon(name),
+    el('span', { className: 'stat-value', text: value }),
+    el('span', { className: 'stat-label', text: label }),
+  );
+
+/**
+ * Headline: what the whole plan avoids per year, with a live community slider.
  * @param {Brief} brief
  */
 export function renderCommunityHeadline(brief) {
   const c = brief.community;
   const together = c.households > 1;
   const figures = together ? c.total : c.perHousehold;
+  const trees = together ? c.treesEquivalent : Math.round(c.perHousehold.co2KgPerYear / 21);
+  const range = el('input', {
+    type: 'range',
+    id: 'community-range',
+    min: 1,
+    max: Math.max(1000, c.households),
+    step: 1,
+    value: c.households,
+    'aria-describedby': 'community-range-help',
+  });
   return el(
     'div',
     { className: 'community-headline' },
+    el(
+      'div',
+      { className: 'impact-stats' },
+      stat('leaf', formatCo2(figures.co2KgPerYear), 'CO₂ avoided a year'),
+      stat('wind', formatMass(figures.pm25GPerYear), 'PM2.5 kept out of the air a year'),
+      stat('tree', formatNumber(trees), 'trees’ worth of CO₂ uptake'),
+    ),
     el('p', {
       className: 'community-figure',
-      text: `${formatCo2(figures.co2KgPerYear)} and ${formatMass(figures.pm25GPerYear)} of PM2.5 avoided a year`,
-    }),
-    el('p', {
       text: together
-        ? `If all ${formatNumber(c.households)} households adopt this plan: what ~${formatNumber(c.treesEquivalent)} trees absorb in a year. Overlapping transport options are counted once.`
-        : 'If your household adopts this plan. Set "Households acting together" to see what your society or street could achieve.',
+        ? `${formatCo2(figures.co2KgPerYear)} and ${formatMass(figures.pm25GPerYear)} of PM2.5 avoided a year if all ${formatNumber(c.households)} households adopt this plan. Overlapping transport options are counted once.`
+        : `${formatCo2(figures.co2KgPerYear)} and ${formatMass(figures.pm25GPerYear)} of PM2.5 avoided a year if your household adopts this plan.`,
     }),
+    el(
+      'div',
+      { className: 'slider-row' },
+      el(
+        'label',
+        { for: 'community-range' },
+        'Households acting together: ',
+        el('output', {
+          className: 'slider-value',
+          for: 'community-range',
+          text: formatNumber(c.households),
+        }),
+      ),
+      range,
+      el('p', {
+        id: 'community-range-help',
+        className: 'hint',
+        text: 'Drag to see what your street, society or school could achieve together.',
+      }),
+    ),
   );
 }
 
@@ -83,10 +133,27 @@ function commuteTable(commute) {
 }
 
 /**
- * Community headline, commute comparison and quantified sustainable actions.
+ * Running total of the actions this household has pledged.
  * @param {Brief} brief
+ * @param {ReadonlySet<string>} pledged
  */
-export function renderImpact(brief) {
+export function renderPledgeSummary(brief, pledged) {
+  const totals = pledgeTotals(brief.actions, pledged);
+  return el(
+    'p',
+    { className: 'pledge-summary', id: 'pledge-summary', role: 'status' },
+    totals.count === 0
+      ? 'Tap “I’ll do this” on any action below to build your family’s pledge.'
+      : `Your ${totals.count} pledge${totals.count === 1 ? '' : 's'}: ${formatCo2(totals.co2KgPerYear)} and ${formatMass(totals.pm25GPerYear)} of PM2.5 avoided a year (≈ ${formatNumber(totals.trees)} trees).`,
+  );
+}
+
+/**
+ * Community headline, commute comparison, quantified actions and pledges.
+ * @param {Brief} brief
+ * @param {ReadonlySet<string>} [pledged]
+ */
+export function renderImpact(brief, pledged = new Set()) {
   const { commute, actions, communityHouseholds } = brief;
   const community = communityHouseholds > 1;
   const list = el(
@@ -101,6 +168,7 @@ export function renderImpact(brief) {
           ? `${formatMass(q.noxGPerYear)} NOx / year`
           : null,
       ].filter(Boolean);
+      const on = pledged.has(a.id);
       return el(
         'li',
         { className: `action cat-${a.category}` },
@@ -119,8 +187,24 @@ export function renderImpact(brief) {
               figures.join(' · '),
             )
           : null,
+        el(
+          'button',
+          {
+            type: 'button',
+            className: 'btn-ghost pledge',
+            'data-pledge': a.id,
+            'aria-pressed': String(on),
+          },
+          icon(on ? 'check' : 'leaf'),
+          on ? 'Pledged' : 'I’ll do this',
+        ),
       );
     }),
   );
-  return [renderCommunityHeadline(brief), commute ? commuteTable(commute) : null, list];
+  return [
+    renderCommunityHeadline(brief),
+    renderPledgeSummary(brief, pledged),
+    commute ? commuteTable(commute) : null,
+    list,
+  ];
 }

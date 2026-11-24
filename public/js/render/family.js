@@ -1,7 +1,16 @@
 // @ts-check
 import { el } from '../dom.js';
+import { icon } from './icons.js';
 
 /** @typedef {import('../../../src/domain/brief.js').AirBrief} Brief */
+
+/** @param {string} who */
+const memberIcon = (who) => {
+  if (who.startsWith('Children')) return 'child';
+  if (who.startsWith('Older')) return 'senior';
+  if (who.startsWith('Family member')) return 'heart';
+  return 'adult';
+};
 
 /**
  * Local anti-smog rules (Delhi-NCR GRAP) and what they mean for this family.
@@ -13,7 +22,7 @@ export function renderPolicy(brief) {
   return el(
     'div',
     { className: 'policy' },
-    el('h3', { text: `Local smog rules: GRAP ${policy.stageLabel}` }),
+    el('h3', {}, icon('alert'), ` Local smog rules: GRAP ${policy.stageLabel}`),
     el('p', { className: 'policy-for-you', text: 'What this means for your family:' }),
     el(
       'ul',
@@ -59,7 +68,14 @@ export function renderFamily(brief) {
     el(
       'ul',
       { className: 'member-advice' },
-      risk.memberAdvice.map((m) => el('li', {}, el('strong', { text: `${m.who}: ` }), m.advice)),
+      risk.memberAdvice.map((m) =>
+        el(
+          'li',
+          {},
+          el('span', { className: 'member-icon' }, icon(memberIcon(m.who))),
+          el('p', {}, el('strong', { text: `${m.who}: ` }), m.advice),
+        ),
+      ),
     ),
     renderPolicy(brief),
   ];

@@ -50,22 +50,33 @@ windows, is my purifier enough, should I take the metro?_ They also want to know
 
 ## 2. What a family sees
 
-1. **Search a city** (or _Use my location_) and fill in a 1-minute household profile, stored only in the browser.
-2. **Air right now**: the AQI on the local scale, its category colour (WCAG-AA text contrast), the main pollutant and
-   a pollutant table.
-3. **What it means for your family**: a verdict ("Right now, limit outdoor time for children, older adults and the
-   family member with asthma; healthy adults can go out but take it easy"), a _Why this advice?_ explanation, advice
-   per member and, in Delhi-NCR on 'Poor' days or worse, the **GRAP stage** in force with what it means for this family.
-4. **Next 24 hours and the smog trap**: an accessible hourly chart, the cleanest and worst windows, and a plain-language
-   explanation of the inversion ("the mixing layer is about 370 m deep with 4.9 km/h wind…").
-5. **Today's routine**: for example _"16:00–17:00 · Exercise outdoors in the cleanest hour"_, _"Commute · Try the
-   metro today: saves 3.1 kg CO₂ today; inhaled PM2.5 −39 %"_, _"Bedtime · Run the DIY fan filter: bedroom PM2.5
-   ≈ 38 → 8 µg/m³ (−79 %)"_.
-6. **Indoor air hacks**, prioritised _Do first / Recommended / Good to know_, with a before/after table.
-7. **Sustainable alternatives**: a community headline (total CO₂ and PM2.5 avoided a year, in tree-equivalents), a
-   commute comparison table, and household actions with yearly impact for one home or for all _N_ households.
-8. **Ask AirWise**: free-form questions in English, Hindi or Hinglish ("bacche bahar khel sakte hain?"), answered
-   from the same brief. Answers are shown with their source (Gemini, Claude or rules).
+1. **A landing page, not a form.** The hero ("Breathe easier this winter.") has a big search bar, **one-tap popular
+   cities** (Delhi, Mumbai, Kolkata, Lucknow, Patna, Bengaluru) and _Use my location_. The whole page **re-tints with
+   the air**: green on clean days, amber, rust, purple or maroon as the AQI worsens.
+2. **Air right now.** An animated, colour-banded **AQI dial**, the category on the local scale, and the air in
+   relatable terms: **"≈ 1.5 cigarettes a day"** (Berkeley Earth equivalence) and **"2.3× the WHO daily limit"**.
+   Pollutant meters show which pollutant dominates.
+3. **Today at a glance.** Five decision tiles (**mask, windows, exercise, kids outside, commute**). Each gives a
+   one-line answer and its reason, colour-coded _and_ labelled Good, Caution or Avoid.
+4. **What it means for your family.** A verdict for the most vulnerable member, a _Why this advice?_ explanation,
+   advice per member with icons and, in Delhi-NCR on 'Poor' days or worse, the **GRAP stage** in force with what it
+   means for this family.
+5. **Next 24 hours and the smog trap.** An SVG forecast chart with the **cleanest and worst windows highlighted**, a
+   "Now" marker, and a plain-language explanation of the winter inversion.
+6. **Today's routine.** A timeline with an icon per step, for example _"16:00–17:00 · Exercise outdoors in the
+   cleanest hour"_ or _"Before 07:00 tomorrow · Close up the house"_. Every step has an **Impact:** line.
+7. **Indoor air hacks.** A **before/after bar visual** (outdoors → indoors → with a DIY fan filter → with a purifier
+   sized for the room), plus prioritised hacks.
+8. **Sustainable alternatives and their impact.**
+   - Headline stat tiles: CO₂ and PM2.5 avoided a year, and tree-equivalents.
+   - A **live "households acting together" slider**: drag it and every figure updates instantly.
+   - A commute comparison.
+   - **Pledge buttons** ("I'll do this") that keep a running total of your family's yearly impact.
+9. **Family setup.** It stays out of the way as summary pills with an _Edit family_ button. The editor itself is
+   visual: − / + steppers, condition chips, and icon tiles for commute, cooking fuel and heating.
+10. **Ask AirWise.** A chat with suggested questions and a **voice button** (speak in English or Hindi). Answers come
+    from Gemini, grounded in the same numbers, in the language you used, with the engine named under each answer.
+11. **Share and listen.** _Share today's plan_ (WhatsApp-ready text) and _Read summary aloud_.
 
 ## 3. How it works (architecture)
 
@@ -269,7 +280,7 @@ See [`SECURITY.md`](SECURITY.md) for the full threat model. Highlights:
   reasoning effort and capped output.
 - **Linear algorithms** (n ≤ 48 hours) and no database.
 
-### Testing: 333 automated tests (Vitest + fast-check + axe-core)
+### Testing: 357 automated tests (Vitest + fast-check + axe-core)
 
 | Suite                                                                                                          | What it proves                                                                                                                                                                                                                                                                                                                                                  |
 | -------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -283,7 +294,7 @@ See [`SECURITY.md`](SECURITY.md) for the full threat model. Highlights:
 | `tests/integration/process.test.ts`                                                                            | **Spawns the real server process**, waits for its structured log line and calls it over HTTP                                                                                                                                                                                                                                                                    |
 | `tests/frontend/*.test.ts`                                                                                     | Full UI flows in jsdom (search, geolocation, field-level errors, share, read-aloud, chat), XSS-safe rendering, tamper-proof storage, Hindi language tagging, **axe-core audits of the empty and fully rendered page (0 violations, with a self-test)**, and **contrast checks of every theme token pair in light and dark mode**                                |
 
-Coverage (thresholds enforced in CI on Node 20 and 22): **100 % lines, 99.4 % statements, 99.7 % functions, 96 % branches.**
+Coverage (thresholds enforced in CI on Node 20 and 22): **100 % lines, 99.4 % statements, 99.8 % functions, 94.8 % branches.**
 
 ### Accessibility
 
@@ -373,6 +384,7 @@ src/
     risk.ts            family risk and per-member advice
     indoor.ts          mass-balance model and indoor hacks
     routine.ts         time-ordered daily routine
+    glance.ts          five one-line decisions + cigarette / WHO-limit equivalents
     time.ts            local-time helpers and day labels
   services/
     openMeteo.ts       upstream client (fixed hosts, schema-validated)
@@ -384,8 +396,10 @@ src/
   app.ts, server.ts, config.ts
 public/
   index.html, css/     accessible markup and styles (no inline code)
-  js/app.js            dependency-injected UI controller; js/main.js is the 2-line entry
-  js/render/           one module per results section
+  js/app.js            composition root (dependency-injected); js/main.js is the 2-line entry
+  js/controllers/      search, family editor, impact slider + pledges, share/speech, voice input
+  js/render/           one module per section: AQI dial, glance tiles, family, SVG chart, routine, indoor, impact
+  js/community.js      instant client-side community scaling and pledge totals
 tests/                 unit, property-based, integration, process and front-end tests + real-data fixtures
 docs/DECISIONS.md      design decisions and red-team log
 ```

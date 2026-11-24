@@ -94,6 +94,12 @@ describe('stylesheet accessibility features', () => {
   });
 
   it('outlines chart bars for non-text contrast', () => {
-    expect(css).toMatch(/\.bar \{[^}]*box-shadow: inset 0 0 0 1px var\(--text\)/);
+    expect(css).toMatch(/\.chart-bar \{\s*stroke: var\(--text\);/);
+  });
+
+  it('keeps white hero text readable on every AQI-tinted hero gradient', () => {
+    const stops = [...css.matchAll(/--hero-[ab]: (#[0-9a-fA-F]{6})/g)].map((m) => m[1] as string);
+    expect(stops.length).toBeGreaterThanOrEqual(14);
+    for (const stop of stops) expect(ratio('#ffffff', stop), stop).toBeGreaterThanOrEqual(4.5);
   });
 });

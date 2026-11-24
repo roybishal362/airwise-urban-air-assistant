@@ -1,6 +1,12 @@
 import { calculateAqi, resolveStandard } from './aqi/calculator.js';
 import { POLLUTANT_LABELS, STANDARDS } from './aqi/standards.js';
 import { InsufficientDataError } from './errors.js';
+import {
+  buildGlance,
+  exposureEquivalents,
+  type ExposureEquivalents,
+  type GlanceTile,
+} from './glance.js';
 import { buildHourlyIndex, describeTrend, findWindow, type Trend } from './forecast.js';
 import type { Household } from './household.js';
 import {
@@ -48,7 +54,13 @@ export interface AirBrief {
   location: GeoLocation;
   observedAt: LocalTime;
   timezone: string;
-  standard: { id: StandardId; name: string; shortName: string };
+  standard: {
+    id: StandardId;
+    name: string;
+    shortName: string;
+    /** Category bands, for drawing the AQI gauge. */
+    bands: { min: number; max: number; label: string; color: string }[];
+  };
   current: {
     aqi: number;
     category: AqiCategory;
@@ -70,6 +82,10 @@ export interface AirBrief {
   region: Region;
   /** Local anti-smog rules in force at this AQI (Delhi-NCR GRAP), if any. */
   policy: LocalPolicy | null;
+  /** Five one-line decisions for the day (mask, windows, exercise, kids, commute). */
+  glance: GlanceTile[];
+  /** Today's PM2.5 in relatable terms: cigarettes a day and multiples of the WHO limit. */
+  exposure: ExposureEquivalents;
   summary: string;
 }
 
@@ -205,7 +221,12 @@ export function buildBrief(input: BriefInput): AirBrief {
     location,
     observedAt: air.currentTime,
     timezone: air.timezone,
-    standard: { id: standard.id, name: standard.name, shortName: standard.shortName },
+    standard: {
+      id: standard.id,
+      name: standard.name,
+      shortName: standard.shortName,
+      bands: standard.categories.map(({ min, max, label, color }) => ({ min, max, label, color })),
+    },
     current: {
       aqi: reading.value,
       category: reading.category,
@@ -224,6 +245,8 @@ export function buildBrief(input: BriefInput): AirBrief {
     community: summariseCommunity(actions, household.communityHouseholds),
     region,
     policy: localPolicy(region, naqi, household),
+    glance: buildGlance({ reading, windows, commute, household, now: air.currentTime }),
+    exposure: exposureEquivalents(outdoorPm25),
   };
   return { ...brief, summary: summarise(brief) };
 }

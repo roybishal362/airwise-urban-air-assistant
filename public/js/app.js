@@ -1,14 +1,20 @@
 // @ts-check
 import * as defaultApi from './api.js';
 import { createChat } from './chat.js';
+import { setupImpactControls } from './controllers/impact.js';
+import { setupProfile } from './controllers/profile.js';
+import { setupSearch } from './controllers/search.js';
+import { setupShare } from './controllers/share.js';
+import { setupVoice } from './controllers/voice.js';
 import { byId, el, replaceChildren } from './dom.js';
-import { FieldError, readProfile, writeProfile } from './profileForm.js';
-import { planToText, renderBrief } from './render/index.js';
+import { renderBrief } from './render/index.js';
 import { loadPlace, loadProfile, savePlace, saveProfile } from './storage.js';
 
 /**
  * @typedef {import('./storage.js').Place} Place
+ * @typedef {import('./storage.js').Profile} Profile
  * @typedef {import('../../src/domain/brief.js').AirBrief} AirBrief
+ * @typedef {import('./controllers/voice.js').RecogniserConstructor} RecogniserConstructor
  * @typedef {Pick<typeof defaultApi, 'searchPlaces' | 'fetchBrief' | 'sendChat' | 'fetchHealth'>} Api
  * @typedef {{
  *   storage?: Storage,
@@ -17,6 +23,7 @@ import { loadPlace, loadProfile, savePlace, saveProfile } from './storage.js';
  *   speech?: SpeechSynthesis | null,
  *   share?: ((data: ShareData) => Promise<void>) | null,
  *   clipboard?: Pick<Clipboard, 'writeText'> | null,
+ *   Recognition?: RecogniserConstructor | null,
  * }} AppOptions
  */
 
@@ -27,61 +34,67 @@ const INITIAL_SUGGESTIONS = [
 ];
 
 /**
- * Wire the UI to the API. Every browser capability is injected so the whole
- * flow is testable in jsdom; `main.js` passes the real ones.
- * @param {AppOptions} [options]
+ * Real browser capabilities unless a test injects replacements.
+ * @param {AppOptions} options
  */
-export function startApp(options = {}) {
-  const storage = options.storage ?? localStorage;
-  const api = options.api ?? defaultApi;
-  const geolocation =
-    options.geolocation === undefined ? navigator.geolocation : options.geolocation;
-  const speech = options.speech === undefined ? globalThis.speechSynthesis : options.speech;
-  const share = options.share === undefined ? navigator.share?.bind(navigator) : options.share;
-  const clipboard = options.clipboard === undefined ? navigator.clipboard : options.clipboard;
-
-  const ui = {
-    placeForm: byId('place-form', HTMLFormElement),
-    placeInput: byId('place-input', HTMLInputElement),
-    placeResults: byId('place-results', HTMLUListElement),
-    geoButton: byId('geo-button', HTMLButtonElement),
-    currentPlace: byId('current-place', HTMLParagraphElement),
-    profileForm: byId('profile-form', HTMLFormElement),
-    profileError: byId('profile-error', HTMLParagraphElement),
-    status: byId('status', HTMLParagraphElement),
-    results: byId('results', HTMLDivElement),
-    nowSection: byId('now', HTMLElement),
-    shareButton: byId('share-button', HTMLButtonElement),
-    speakButton: byId('speak-button', HTMLButtonElement),
-    chatMode: byId('chat-mode', HTMLParagraphElement),
+function resolveEnvironment(options) {
+  /** @template T @param {T | undefined} injected @param {() => T} real */
+  const pick = (injected, real) => (injected === undefined ? real() : injected);
+  const speechGlobals =
+    /** @type {{ SpeechRecognition?: RecogniserConstructor, webkitSpeechRecognition?: RecogniserConstructor }} */ (
+      /** @type {unknown} */ (globalThis)
+    );
+  return {
+    storage: options.storage ?? localStorage,
+    api: options.api ?? defaultApi,
+    geolocation: pick(options.geolocation, () => navigator.geolocation ?? null),
+    speech: pick(options.speech, () => globalThis.speechSynthesis ?? null),
+    share: pick(options.share, () => navigator.share?.bind(navigator) ?? null),
+    clipboard: pick(options.clipboard, () => navigator.clipboard ?? null),
+    Recognition: pick(
+      options.Recognition,
+      () => speechGlobals.SpeechRecognition ?? speechGlobals.webkitSpeechRecognition ?? null,
+    ),
   };
+}
 
-  const targets = {
+function collectTargets() {
+  return {
     now: byId('now-body', HTMLDivElement),
+    glance: byId('glance-body', HTMLDivElement),
     family: byId('family-body', HTMLDivElement),
     forecast: byId('forecast-body', HTMLDivElement),
     routine: byId('routine-body', HTMLDivElement),
     indoor: byId('indoor-body', HTMLDivElement),
     impact: byId('impact-body', HTMLDivElement),
   };
+}
 
+/**
+ * Compose the UI: state, the plan loader and every controller. All browser
+ * capabilities are injectable so the whole flow is testable in jsdom.
+ * @param {AppOptions} [options]
+ */
+export function startApp(options = {}) {
+  const env = resolveEnvironment(options);
+  const status = byId('status', HTMLParagraphElement);
+  const results = byId('results', HTMLDivElement);
+  const placeInput = byId('place-input', HTMLInputElement);
+  const currentPlace = byId('current-place', HTMLParagraphElement);
+  const targets = collectTargets();
+  const hadProfile = env.storage.getItem('airwise.profile.v1') !== null;
   const state = {
-    profile: loadProfile(storage),
-    /** @type {Place | null} */
-    place: loadPlace(storage),
-    /** @type {AirBrief | null} */
-    brief: null,
+    profile: loadProfile(env.storage),
+    /** @type {Place | null} */ place: loadPlace(env.storage),
+    /** @type {AirBrief | null} */ brief: null,
   };
 
-  /**
-   * Errors are announced assertively, progress politely.
-   * @param {string} message
-   * @param {'info' | 'error'} [kind]
-   */
+  /** @param {string} message @param {'info' | 'error'} [kind] */
   function setStatus(message, kind = 'info') {
-    ui.status.setAttribute('aria-live', kind === 'error' ? 'assertive' : 'polite');
-    ui.status.textContent = message;
-    ui.status.dataset.kind = kind;
+    // Errors are announced assertively, progress politely.
+    status.setAttribute('aria-live', kind === 'error' ? 'assertive' : 'polite');
+    status.textContent = message;
+    status.dataset.kind = kind;
   }
 
   /** @param {unknown} error */
@@ -92,192 +105,111 @@ export function startApp(options = {}) {
 
   function showCurrentPlace() {
     if (!state.place) return;
-    ui.currentPlace.hidden = false;
-    replaceChildren(ui.currentPlace, 'Showing plan for ', el('strong', { text: state.place.name }));
+    currentPlace.hidden = false;
+    replaceChildren(currentPlace, 'Showing plan for ', el('strong', { text: state.place.name }));
   }
+
+  const impact = setupImpactControls({
+    container: targets.impact,
+    storage: env.storage,
+    getBrief: () => state.brief,
+    setBrief: (brief) => {
+      state.brief = brief;
+    },
+    onHouseholdsChange: (households) => {
+      state.profile.household.communityHouseholds = households;
+      saveProfile(env.storage, state.profile);
+      profile.renderSummary();
+    },
+  });
 
   /** @param {{ focusResults?: boolean }} [opts] */
   async function loadBrief({ focusResults = false } = {}) {
     if (!state.place) return;
     const place = state.place;
     setStatus(`Fetching live air and weather data for ${place.name}…`);
-    ui.results.setAttribute('aria-busy', 'true');
+    results.setAttribute('aria-busy', 'true');
     try {
       /** @type {AirBrief} */
-      const brief = await api.fetchBrief({
+      const brief = await env.api.fetchBrief({
         location: place,
         standard: state.profile.standard,
         household: state.profile.household,
       });
       state.brief = brief;
-      renderBrief(brief, targets);
-      ui.results.hidden = false;
+      renderBrief(brief, targets, impact.pledged);
+      document.body.dataset.aqiLevel = String(brief.current.category.level);
+      results.hidden = false;
       setStatus(
         `Plan ready for ${place.name}: ${brief.current.category.label}, AQI ${brief.current.aqi}.`,
       );
-      if (focusResults) ui.nowSection.focus();
+      if (focusResults) byId('now', HTMLElement).focus();
     } catch (error) {
       setStatus(errorMessage(error), 'error');
     } finally {
-      ui.results.setAttribute('aria-busy', 'false');
+      results.setAttribute('aria-busy', 'false');
     }
   }
 
   /** @param {Place} place */
   function choosePlace(place) {
     state.place = place;
-    savePlace(storage, place);
-    ui.placeResults.hidden = true;
-    replaceChildren(ui.placeResults);
+    savePlace(env.storage, place);
     showCurrentPlace();
     return loadBrief({ focusResults: true });
   }
 
-  /** @param {Place} p */
-  const placeLabel = (p) => [p.name, p.region, p.country].filter(Boolean).join(', ');
-
-  async function searchForPlace() {
-    const query = ui.placeInput.value.trim();
-    if (query.length < 2) {
-      setStatus('Type at least two letters of your city.', 'error');
-      ui.placeInput.focus();
-      return;
-    }
-    setStatus(`Searching for "${query}"…`);
-    try {
-      /** @type {Place[]} */
-      const places = await api.searchPlaces(query);
-      if (places.length === 0) {
-        setStatus(
-          `No places found for "${query}". Check the spelling or try a nearby city.`,
-          'error',
-        );
-        return;
-      }
-      replaceChildren(
-        ui.placeResults,
-        places.map((p) => {
-          const button = el('button', {
-            type: 'button',
-            className: 'place-option',
-            text: placeLabel(p),
-          });
-          button.addEventListener('click', () => void choosePlace(p));
-          return el('li', {}, button);
-        }),
-      );
-      ui.placeResults.hidden = false;
-      setStatus(`${places.length} place${places.length === 1 ? '' : 's'} found. Choose one.`);
-      ui.placeResults.querySelector('button')?.focus();
-    } catch (error) {
-      setStatus(errorMessage(error), 'error');
-    }
-  }
-
-  function useMyLocation() {
-    if (!geolocation) {
-      setStatus(
-        'Location is not available in this browser. Search for your city instead.',
-        'error',
-      );
-      return;
-    }
-    setStatus('Asking your browser for your location…');
-    geolocation.getCurrentPosition(
-      (position) => {
-        // ~100 m precision is plenty for a ~10 km air-quality grid and protects privacy.
-        const round = (/** @type {number} */ n) => Math.round(n * 1000) / 1000;
-        void choosePlace({
-          name: 'Your location',
-          latitude: round(position.coords.latitude),
-          longitude: round(position.coords.longitude),
-        });
-      },
-      () => setStatus('Could not get your location. Search for your city instead.', 'error'),
-      { timeout: 10_000, maximumAge: 600_000 },
-    );
-  }
-
-  function clearFieldErrors() {
-    ui.profileForm.querySelectorAll('[aria-invalid="true"]').forEach((node) => {
-      node.removeAttribute('aria-invalid');
-      const described = (node.getAttribute('aria-describedby') ?? '')
-        .split(' ')
-        .filter((id) => id && id !== 'profile-error');
-      if (described.length) node.setAttribute('aria-describedby', described.join(' '));
-      else node.removeAttribute('aria-describedby');
-    });
-  }
-
-  function submitProfile() {
-    clearFieldErrors();
-    try {
-      state.profile = readProfile(ui.profileForm);
-    } catch (error) {
-      ui.profileError.textContent =
-        error instanceof RangeError ? error.message : 'Please check the form.';
-      ui.profileError.hidden = false;
-      if (error instanceof FieldError) {
-        // Tie the message to the offending field so screen readers announce both.
-        const field = ui.profileForm.elements.namedItem(error.field);
-        if (field instanceof HTMLElement) {
-          field.setAttribute('aria-invalid', 'true');
-          const described = field.getAttribute('aria-describedby');
-          field.setAttribute(
-            'aria-describedby',
-            described ? `${described} profile-error` : 'profile-error',
-          );
-          field.focus();
-        }
-      }
-      return;
-    }
-    ui.profileError.hidden = true;
-    saveProfile(storage, state.profile);
-    if (state.place) void loadBrief({ focusResults: true });
-    else {
-      setStatus('Profile saved. Now choose your city above.');
-      ui.placeInput.focus();
-    }
-  }
-
-  async function sharePlan() {
-    if (!state.brief) return;
-    const text = planToText(state.brief);
-    try {
-      if (share) {
-        await share({ title: 'AirWise plan', text });
-      } else if (clipboard) {
-        await clipboard.writeText(text);
-        setStatus('Plan copied. Paste it into your family or society group chat.');
-      }
-    } catch {
-      // The user cancelled the share sheet; nothing to do.
-    }
-  }
-
-  function speakPlan() {
-    if (!state.brief || !speech) return;
-    speech.cancel();
-    const utterance = new SpeechSynthesisUtterance(planToText(state.brief));
-    utterance.lang = 'en-IN';
-    speech.speak(utterance);
-  }
-
-  ui.placeForm.addEventListener('submit', (event) => {
-    event.preventDefault();
-    void searchForPlace();
+  setupSearch({
+    ui: {
+      form: byId('place-form', HTMLFormElement),
+      input: placeInput,
+      results: byId('place-results', HTMLUListElement),
+      geoButton: byId('geo-button', HTMLButtonElement),
+      cityButtons: document.querySelectorAll('.chip-city'),
+    },
+    searchPlaces: env.api.searchPlaces,
+    choosePlace,
+    setStatus,
+    errorMessage,
+    geolocation: env.geolocation,
   });
-  ui.geoButton.addEventListener('click', useMyLocation);
-  ui.profileForm.addEventListener('submit', (event) => {
-    event.preventDefault();
-    submitProfile();
+
+  const profile = setupProfile({
+    ui: {
+      form: byId('profile-form', HTMLFormElement),
+      panel: byId('profile-panel', HTMLDivElement),
+      toggle: byId('edit-family', HTMLButtonElement),
+      summary: byId('family-summary', HTMLUListElement),
+      hint: byId('family-hint', HTMLParagraphElement),
+      error: byId('profile-error', HTMLParagraphElement),
+    },
+    storage: env.storage,
+    getProfile: () => state.profile,
+    setProfile: (next) => {
+      state.profile = next;
+    },
+    onSaved: () => {
+      if (state.place) void loadBrief({ focusResults: true });
+      else {
+        setStatus('Profile saved. Now choose your city above.');
+        placeInput.focus();
+      }
+    },
   });
-  ui.shareButton.addEventListener('click', () => void sharePlan());
-  if (speech) {
-    ui.speakButton.hidden = false;
-    ui.speakButton.addEventListener('click', speakPlan);
+  if (!hadProfile) {
+    byId('family-hint', HTMLParagraphElement).textContent =
+      'Showing a sample family. Tap “Edit family” to match yours: it changes every recommendation.';
   }
+
+  setupShare({
+    shareButton: byId('share-button', HTMLButtonElement),
+    speakButton: byId('speak-button', HTMLButtonElement),
+    getBrief: () => state.brief,
+    setStatus,
+    share: env.share,
+    clipboard: env.clipboard,
+    speech: env.speech,
+  });
 
   const chat = createChat({
     log: byId('chat-log', HTMLDivElement),
@@ -285,7 +217,7 @@ export function startApp(options = {}) {
     input: byId('chat-input', HTMLTextAreaElement),
     suggestions: byId('chat-suggestions', HTMLDivElement),
     send: (message, history) =>
-      api.sendChat({
+      env.api.sendChat({
         location: state.place,
         standard: state.profile.standard,
         household: state.profile.household,
@@ -295,24 +227,30 @@ export function startApp(options = {}) {
     canSend: () => state.place !== null,
     onBlocked: () => {
       setStatus('Choose your city first so answers use your local air data.', 'error');
-      ui.placeInput.focus();
+      placeInput.focus();
     },
   });
   chat.showSuggestions(INITIAL_SUGGESTIONS);
 
-  const ready = api
+  setupVoice({
+    button: byId('voice-button', HTMLButtonElement),
+    input: byId('chat-input', HTMLTextAreaElement),
+    onTranscript: (text) => void chat.ask(text),
+    setStatus,
+    Recognition: env.Recognition,
+  });
+
+  const health = env.api
     .fetchHealth()
-    .then((health) => {
-      ui.chatMode.textContent =
-        health.assistant === 'rules'
+    .then((info) => {
+      byId('chat-mode', HTMLParagraphElement).textContent =
+        info.assistant === 'rules'
           ? 'Running in offline mode: answers come from AirWise rules using your live data.'
-          : `Powered by ${health.assistant === 'gemini' ? 'Google Gemini' : 'Claude'}, grounded in your live air data. Your household details are sent without any names.`;
+          : `Powered by ${info.assistant === 'gemini' ? 'Google Gemini' : 'Claude'}, grounded in your live air data. Your household details are sent without any names.`;
     })
     .catch(() => undefined);
 
-  writeProfile(ui.profileForm, state.profile);
   showCurrentPlace();
   const initialLoad = loadBrief();
-
-  return { state, chat, loadBrief, choosePlace, ready: Promise.all([ready, initialLoad]) };
+  return { state, chat, loadBrief, choosePlace, ready: Promise.all([health, initialLoad]) };
 }

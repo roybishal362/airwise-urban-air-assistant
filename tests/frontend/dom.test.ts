@@ -18,6 +18,7 @@ import { DELHI, makeAir, makeHousehold, makeWeather } from '../fixtures/data.js'
 
 const targets = () => ({
   now: byId('now-body', HTMLDivElement),
+  glance: byId('glance-body', HTMLDivElement),
   family: byId('family-body', HTMLDivElement),
   forecast: byId('forecast-body', HTMLDivElement),
   routine: byId('routine-body', HTMLDivElement),
@@ -83,14 +84,28 @@ describe('rendering a real brief', () => {
   it('fills every section from server data', () => {
     renderBrief(makeBrief({ communityHouseholds: 25 }), targets());
     expect(document.querySelector('.aqi-value')?.textContent).toBe('108');
-    expect(document.querySelectorAll('.bars li')).toHaveLength(24);
+    expect(document.querySelector('.gauge')?.getAttribute('aria-label')).toBe(
+      'AQI gauge: 108, Moderate',
+    );
+    expect(document.querySelectorAll('.gauge-band')).toHaveLength(6);
+    expect(document.querySelector('.stat-value')?.textContent).toMatch(/^≈ \d/);
+    expect(document.querySelectorAll('.glance-tile')).toHaveLength(5);
+    expect(document.querySelectorAll('.chart-bar')).toHaveLength(24);
+    expect(document.querySelector('.band-best')).not.toBeNull();
+    expect(document.querySelector('#chart-desc')?.textContent).toMatch(/^Lowest AQI \d+/);
     expect(document.querySelectorAll('.timeline li').length).toBeGreaterThan(4);
+    expect(document.querySelectorAll('.step-icon use').length).toBeGreaterThan(4);
+    expect(document.querySelectorAll('.viz li')).toHaveLength(4);
     expect(document.querySelectorAll('.hack').length).toBeGreaterThan(3);
     expect(document.querySelector('.commute caption')?.textContent).toMatch(/commute/);
     expect(document.querySelector('.figures')?.textContent).toMatch(/All 25 households/);
-    expect(document.querySelector('.bars .visually-hidden')?.textContent).toMatch(
-      /^06:00: AQI \d+/,
+    expect(document.querySelectorAll('[data-pledge]').length).toBe(
+      document.querySelectorAll('.action').length,
     );
+    expect(document.querySelector('#community-range')?.getAttribute('value')).toBe('25');
+    expect(
+      document.querySelector('[aria-label="Hourly air quality values"] li')?.textContent,
+    ).toMatch(/^06:00: AQI \d+/);
   });
 
   it('renders hostile text as inert text (XSS)', () => {
@@ -296,7 +311,9 @@ describe('edge cases in rendering and chat', () => {
     };
     const now = el('div', {}, renderNow(sparse));
     expect(now.querySelector('.trend')).toBeNull();
-    expect(now.querySelector('tbody td:last-child')?.textContent).toBe('—');
+    expect(now.querySelector('.meter-value')?.getAttribute('aria-label')).toMatch(
+      /sub-index not available/,
+    );
     const forecast = el('div', {}, renderForecast(sparse));
     expect(forecast.querySelector('.windows')?.textContent).toMatch(/none clean enough/);
   });

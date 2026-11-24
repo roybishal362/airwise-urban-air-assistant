@@ -18,14 +18,34 @@ export class FieldError extends RangeError {
 }
 
 /**
+ * A named control: a single input/select, or a group of radio tiles
+ * (RadioNodeList), all of which expose a read/write `.value`.
  * @param {HTMLFormElement} form
  * @param {string} name
- * @returns {HTMLInputElement | HTMLSelectElement}
+ * @returns {HTMLInputElement | HTMLSelectElement | RadioNodeList}
  */
 function field(form, name) {
   const node = form.elements.namedItem(name);
-  if (node instanceof HTMLInputElement || node instanceof HTMLSelectElement) return node;
+  if (
+    node instanceof HTMLInputElement ||
+    node instanceof HTMLSelectElement ||
+    node instanceof RadioNodeList
+  ) {
+    return node;
+  }
   throw new Error(`Missing form field: ${name}`);
+}
+
+/**
+ * Value of a required choice (radio group or select).
+ * @param {HTMLFormElement} form
+ * @param {string} name
+ * @param {string} label
+ */
+function choice(form, name, label) {
+  const value = field(form, name).value;
+  if (!value) throw new FieldError(name, `Choose your ${label}.`);
+  return value;
 }
 
 /**
@@ -82,11 +102,11 @@ export function readProfile(form) {
           : 0,
       },
       lifestyle: {
-        commuteMode: field(form, 'commuteMode').value,
+        commuteMode: choice(form, 'commuteMode', 'commute'),
         commuteKm: number(form, 'commuteKm', 0, 200, 'Commute distance'),
         workFromHomePossible: checked(form, 'workFromHomePossible'),
-        cookingFuel: field(form, 'cookingFuel').value,
-        heating: field(form, 'heating').value,
+        cookingFuel: choice(form, 'cookingFuel', 'cooking fuel'),
+        heating: choice(form, 'heating', 'winter heating'),
         exercisesOutdoors: checked(form, 'exercisesOutdoors'),
       },
       communityHouseholds: Math.round(
@@ -129,4 +149,52 @@ export function writeProfile(form, profile) {
     const box = /** @type {HTMLInputElement} */ (node);
     box.checked = h.conditions.includes(box.value);
   });
+}
+
+const COMMUTE_LABELS = /** @type {Readonly<Record<string, string>>} */ ({
+  two_wheeler: 'Scooter / bike',
+  car_petrol: 'Petrol car',
+  car_diesel: 'Diesel car',
+  car_cng: 'CNG car',
+  ev_car: 'Electric car',
+  auto_rickshaw: 'Auto-rickshaw',
+  bus: 'Bus',
+  metro: 'Metro / train',
+  bicycle: 'Bicycle',
+  walk: 'Walk',
+  none: 'No commute',
+});
+
+const CONDITION_LABELS = /** @type {Readonly<Record<string, string>>} */ ({
+  asthma: 'Asthma',
+  copd: 'COPD',
+  heart_disease: 'Heart disease',
+  diabetes: 'Diabetes',
+  pregnancy: 'Pregnancy',
+  allergies: 'Allergies',
+});
+
+/**
+ * @param {number} n
+ * @param {string} one
+ * @param {string} many
+ */
+const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+
+/**
+ * Short pills describing the household, shown when the form is collapsed.
+ * @param {Profile['household']} h
+ * @returns {string[]}
+ */
+export function summariseHousehold(h) {
+  const pills = [];
+  if (h.members.adults) pills.push(plural(h.members.adults, 'adult', 'adults'));
+  if (h.members.children) pills.push(plural(h.members.children, 'child', 'children'));
+  if (h.members.seniors) pills.push(plural(h.members.seniors, 'older adult', 'older adults'));
+  for (const c of h.conditions) pills.push(CONDITION_LABELS[c] ?? c);
+  const mode = COMMUTE_LABELS[h.lifestyle.commuteMode] ?? h.lifestyle.commuteMode;
+  pills.push(h.lifestyle.commuteMode === 'none' ? mode : `${mode} · ${h.lifestyle.commuteKm} km`);
+  if (h.home.hasAirPurifier) pills.push('Has purifier');
+  if (h.communityHouseholds > 1) pills.push(`${h.communityHouseholds} households together`);
+  return pills;
 }

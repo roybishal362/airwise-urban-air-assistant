@@ -69,3 +69,25 @@ export function byId(id, type) {
   if (!(node instanceof type)) throw new Error(`Missing #${id}`);
   return node;
 }
+
+const SVG_NS = 'http://www.w3.org/2000/svg';
+
+/**
+ * SVG counterpart of `el`: attributes are set with setAttribute (never
+ * innerHTML), which also keeps charts CSP-safe.
+ * @param {string} tag
+ * @param {Record<string, string | number | undefined>} [attrs]
+ * @param {...(Node | string | null | undefined | false | (Node | null)[])} children
+ * @returns {SVGElement}
+ */
+export function svg(tag, attrs = {}, ...children) {
+  const node = /** @type {SVGElement} */ (document.createElementNS(SVG_NS, tag));
+  for (const [name, value] of Object.entries(attrs)) {
+    if (value !== undefined) node.setAttribute(name, String(value));
+  }
+  for (const child of children.flat()) {
+    if (child === null || child === undefined || child === false) continue;
+    node.appendChild(typeof child === 'string' ? document.createTextNode(child) : child);
+  }
+  return node;
+}
