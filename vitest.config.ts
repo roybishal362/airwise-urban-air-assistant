@@ -9,9 +9,9 @@ export default defineConfig({
     coverage: {
       provider: 'v8',
       include: ['src/**/*.ts', 'public/js/**/*.js'],
-      exclude: ['src/server.ts', 'public/js/main.js'],
+      exclude: [],
       reporter: ['text', 'html', 'json-summary'],
-      thresholds: { lines: 90, functions: 90, statements: 90, branches: 80 },
+      thresholds: { lines: 97, functions: 97, statements: 97, branches: 90 },
     },
   },
 });

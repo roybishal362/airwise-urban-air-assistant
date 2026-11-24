@@ -1,6 +1,4 @@
 // @vitest-environment jsdom
-import { readFileSync } from 'node:fs';
-import path from 'node:path';
 import axe from 'axe-core';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createChat, messageNode } from '../../public/js/chat.js';
@@ -12,24 +10,11 @@ import {
   renderBrief,
   renderForecast,
   renderImpact,
-} from '../../public/js/render.js';
+} from '../../public/js/render/index.js';
 import { DEFAULT_PROFILE } from '../../public/js/storage.js';
 import { buildBrief, type AirBrief } from '../../src/domain/brief.js';
+import { loadPage } from '../fixtures/browser.js';
 import { DELHI, makeAir, makeHousehold, makeWeather } from '../fixtures/data.js';
-
-const INDEX_HTML = readFileSync(path.resolve(process.cwd(), 'public/index.html'), 'utf8');
-
-/** Load the real page markup (scripts are not executed). */
-function loadPage(): void {
-  const parsed = new DOMParser().parseFromString(INDEX_HTML, 'text/html');
-  document.documentElement.lang = parsed.documentElement.lang;
-  document.head.replaceChildren(
-    ...Array.from(parsed.head.childNodes, (n) => document.importNode(n, true)),
-  );
-  document.body.replaceChildren(
-    ...Array.from(parsed.body.childNodes, (n) => document.importNode(n, true)),
-  );
-}
 
 const targets = () => ({
   now: byId('now-body', HTMLDivElement),
@@ -278,5 +263,68 @@ describe('accessibility (axe-core)', () => {
   it('declares the page language and a skip link', () => {
     expect(document.documentElement.lang).toBe('en');
     expect(document.querySelector('a.skip-link')?.getAttribute('href')).toBe('#main');
+  });
+});
+
+describe('edge cases in rendering and chat', () => {
+  it('detects Hindi replies so screen readers switch voice', async () => {
+    const { detectLanguage } = await import('../../public/js/format.js');
+    expect(detectLanguage('खिड़कियाँ केवल 16:00 से 18:00 के बीच खोलें')).toBe('hi');
+    expect(detectLanguage('Open windows 16:00–18:00 (खिड़की)')).toBe('en');
+    expect(detectLanguage('123 — !!')).toBe('en');
+    expect(
+      messageNode({ role: 'assistant', content: 'नमस्ते, हवा खराब है' }).getAttribute('lang'),
+    ).toBe('hi');
+  });
+
+  it('renders missing trend, sub-index and windows gracefully', async () => {
+    const { renderNow } = await import('../../public/js/render/now.js');
+    const brief = makeBrief();
+    const sparse: AirBrief = {
+      ...brief,
+      forecast: {
+        ...brief.forecast,
+        trend: null,
+        windows: { outdoor: null, ventilation: null, play: null, worst: null },
+      },
+      current: {
+        ...brief.current,
+        pollutants: [
+          { id: 'co', label: 'Carbon monoxide (CO)', concentration: 500, subIndex: null },
+        ],
+      },
+    };
+    const now = el('div', {}, renderNow(sparse));
+    expect(now.querySelector('.trend')).toBeNull();
+    expect(now.querySelector('tbody td:last-child')?.textContent).toBe('—');
+    const forecast = el('div', {}, renderForecast(sparse));
+    expect(forecast.querySelector('.windows')?.textContent).toMatch(/none clean enough/);
+  });
+
+  it('ignores a second question while one is in flight and handles odd answers', async () => {
+    let release: (value: { reply: string; source: string; suggestions?: string[] }) => void = () =>
+      undefined;
+    const send = vi.fn(
+      () =>
+        new Promise<{ reply: string; source: string; suggestions?: string[] }>((resolve) => {
+          release = resolve;
+        }),
+    );
+    const chat = createChat({
+      log: byId('chat-log', HTMLDivElement),
+      form: byId('chat-form', HTMLFormElement),
+      input: byId('chat-input', HTMLTextAreaElement),
+      suggestions: byId('chat-suggestions', HTMLDivElement),
+      send: send as never,
+      canSend: () => true,
+      onBlocked: () => undefined,
+    });
+    const first = chat.ask('one');
+    await chat.ask('two');
+    expect(send).toHaveBeenCalledTimes(1);
+    release({ reply: 'ok', source: 'mystery-engine' });
+    await first;
+    expect(byId('chat-log', HTMLDivElement).querySelector('.msg-source')?.textContent).toBe('');
+    expect(byId('chat-suggestions', HTMLDivElement).children).toHaveLength(0);
   });
 });

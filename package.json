@@ -5,7 +5,7 @@
   "type": "module",
   "main": "dist/server.js",
   "engines": {
-    "node": ">=20.11"
+    "node": ">=20.12"
   },
   "scripts": {
     "dev": "tsx watch src/server.ts",
@@ -49,6 +49,7 @@
     "@vitest/coverage-v8": "^5.1.1",
     "axe-core": "^4.14.1",
     "eslint": "^10.15.0",
+    "fast-check": "^4.11.0",
     "globals": "^17.14.0",
     "jsdom": "^29.1.1",
     "prettier": "^3.10.1",

@@ -6,10 +6,14 @@ import type { Household } from './household.js';
 import {
   buildSustainableActions,
   compareCommute,
+  summariseCommunity,
+  type CommunitySummary,
   type CommuteComparison,
   type SustainableAction,
-} from './impact.js';
+} from './impact/index.js';
 import { buildIndoorPlan, type IndoorPlan } from './indoor.js';
+import { localPolicy, type LocalPolicy } from './policy.js';
+import { resolveRegion, type Region } from './region.js';
 import { assessFamilyRisk, type FamilyRisk } from './risk.js';
 import { buildRoutine, type DayWindows, type RoutineStep } from './routine.js';
 import { analyzeSmog, type SmogOutlook } from './smog.js';
@@ -60,6 +64,12 @@ export interface AirBrief {
   commute: CommuteComparison | null;
   actions: SustainableAction[];
   communityHouseholds: number;
+  /** Headline impact if every household in the community adopts the plan. */
+  community: CommunitySummary;
+  /** Country context that tailors impact factors and emergency advice. */
+  region: Region;
+  /** Local anti-smog rules in force at this AQI (Delhi-NCR GRAP), if any. */
+  policy: LocalPolicy | null;
   summary: string;
 }
 
@@ -103,6 +113,9 @@ function summarise(brief: Omit<AirBrief, 'summary'>): string {
   if (smog.trapRisk === 'high' || smog.trapRisk === 'severe') {
     parts.push(`Smog-trap risk is ${smog.trapRisk}.`);
   }
+  if (brief.policy) {
+    parts.push(`Delhi-NCR GRAP ${brief.policy.stageLabel.split(' – ')[0]} conditions.`);
+  }
   if (forecast.windows.outdoor) {
     const w = forecast.windows.outdoor;
     parts.push(`Cleanest hour: ${w.start.slice(11, 16)} (AQI ~${w.averageAqi}).`);
@@ -112,6 +125,7 @@ function summarise(brief: Omit<AirBrief, 'summary'>): string {
 
 export function buildBrief(input: BriefInput): AirBrief {
   const { location, air, weather, household } = input;
+  const region = resolveRegion(location, air.timezone);
   const standardId = resolveStandard(input.standard, {
     countryCode: location.countryCode,
     timezone: air.timezone,
@@ -156,8 +170,15 @@ export function buildBrief(input: BriefInput): AirBrief {
     ventilationWindow: windows.ventilation,
     now: air.currentTime,
   });
-  const commute = compareCommute(household, outdoorPm25, reading.category.level);
-  const actions = buildSustainableActions(household, commute);
+  const commute = compareCommute(
+    household,
+    outdoorPm25,
+    reading.category.level,
+    region.gridCo2KgPerKwh,
+  );
+  const actions = buildSustainableActions(household, commute, region);
+  // GRAP stages are defined on the India NAQI, whatever scale the user views.
+  const naqi = region.isDelhiNcr ? (calculateAqi(air.current, 'in')?.value ?? null) : null;
   const routine = buildRoutine({
     household,
     risk,
@@ -200,6 +221,9 @@ export function buildBrief(input: BriefInput): AirBrief {
     commute,
     actions,
     communityHouseholds: household.communityHouseholds,
+    community: summariseCommunity(actions, household.communityHouseholds),
+    region,
+    policy: localPolicy(region, naqi, household),
   };
   return { ...brief, summary: summarise(brief) };
 }

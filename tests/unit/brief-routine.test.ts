@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { buildBrief, currentHourIndex } from '../../src/domain/brief.js';
 import { InsufficientDataError } from '../../src/domain/errors.js';
-import { compareCommute } from '../../src/domain/impact.js';
+import { compareCommute } from '../../src/domain/impact/index.js';
 import { buildIndoorPlan } from '../../src/domain/indoor.js';
 import { assessFamilyRisk } from '../../src/domain/risk.js';
 import { buildRoutine, type DayWindows } from '../../src/domain/routine.js';

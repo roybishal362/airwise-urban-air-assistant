@@ -1,5 +1,5 @@
 import { assessVulnerability, type Household } from './household.js';
-import type { CommuteComparison } from './impact.js';
+import type { CommuteComparison } from './impact/index.js';
 import type { IndoorPlan } from './indoor.js';
 import type { FamilyRisk } from './risk.js';
 import type { SmogOutlook } from './smog.js';

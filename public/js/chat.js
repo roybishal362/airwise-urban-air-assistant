@@ -1,6 +1,6 @@
 // @ts-check
 import { el, replaceChildren } from './dom.js';
-import { textToBlocks } from './format.js';
+import { detectLanguage, textToBlocks } from './format.js';
 
 /**
  * @typedef {{ role: 'user' | 'assistant', content: string }} Turn
@@ -40,7 +40,7 @@ export function messageNode(turn, source) {
   );
   return el(
     'div',
-    { className: `msg msg-${turn.role}` },
+    { className: `msg msg-${turn.role}`, lang: detectLanguage(turn.content) },
     el('p', {
       className: 'visually-hidden',
       text: turn.role === 'user' ? 'You said:' : 'AirWise said:',

@@ -57,7 +57,7 @@ describe('static front end', () => {
     const html = await request(app).get('/');
     expect(html.headers['content-type']).toMatch(/text\/html/);
     expect(html.headers['cache-control']).toBe('no-cache');
-    const js = await request(app).get('/js/render.js');
+    const js = await request(app).get('/js/render/index.js');
     expect(js.headers['cache-control']).toBe('no-cache');
     const css = await request(app).get('/css/styles.css');
     expect(css.status).toBe(200);
@@ -68,10 +68,10 @@ describe('static front end', () => {
 
   it('answers conditional requests with 304 Not Modified', async () => {
     const app = appWith();
-    const first = await request(app).get('/js/render.js');
+    const first = await request(app).get('/js/render/index.js');
     const etag = first.headers.etag as string;
     expect(etag).toBeTruthy();
-    const second = await request(app).get('/js/render.js').set('If-None-Match', etag);
+    const second = await request(app).get('/js/render/index.js').set('If-None-Match', etag);
     expect(second.status).toBe(304);
   });
 

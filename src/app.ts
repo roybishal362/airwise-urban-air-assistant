@@ -3,6 +3,7 @@ import express, { type Express } from 'express';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { apiNotFound, errorHandler } from './http/middleware/errorHandler.js';
+import { requestId, requireJson, sameOriginOnly } from './http/middleware/requestGuards.js';
 import { securityHeaders } from './http/middleware/security.js';
 import { createApiRouter, type ApiDependencies } from './http/routes.js';
 import type { Logger } from './lib/logger.js';
@@ -26,6 +27,7 @@ export function createApp(deps: AppDependencies): Express {
   // Needed for correct client IPs (rate limiting) behind Cloud Run's proxy.
   app.set('trust proxy', deps.trustProxyHops);
 
+  app.use(requestId);
   app.use(securityHeaders());
   app.use(compression());
 
@@ -34,6 +36,7 @@ export function createApp(deps: AppDependencies): Express {
     res.on('finish', () => {
       // Path only: query strings and bodies may contain personal data.
       deps.logger.info('request', {
+        requestId: res.locals.requestId,
         method: req.method,
         path: req.path,
         status: res.statusCode,
@@ -43,7 +46,14 @@ export function createApp(deps: AppDependencies): Express {
     next();
   });
 
-  app.use('/api', express.json({ limit: '16kb' }), createApiRouter(deps), apiNotFound);
+  app.use(
+    '/api',
+    sameOriginOnly,
+    requireJson,
+    express.json({ limit: '16kb' }),
+    createApiRouter(deps),
+    apiNotFound,
+  );
 
   app.use(
     express.static(PUBLIC_DIR, {

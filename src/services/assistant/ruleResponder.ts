@@ -98,9 +98,10 @@ function emissionsAnswer(b: AirBrief): string[] {
 
 function communityAnswer(b: AirBrief): string[] {
   const n = b.communityHouseholds;
+  const c = b.community;
   const lines = [
     n > 1
-      ? `If all ${n} households act together:`
+      ? `If all ${n} households adopt this plan: ~${c.total.co2KgPerYear.toLocaleString('en-US')} kg CO₂ and ~${c.total.pm25GPerYear.toLocaleString('en-US')} g PM2.5 avoided a year (what ~${c.treesEquivalent.toLocaleString('en-US')} trees absorb). Biggest contributors:`
       : 'Set the community size in your profile to see the combined impact. Per household:',
   ];
   for (const action of b.actions.slice(0, 3)) {
@@ -140,7 +141,7 @@ function maskAnswer(b: AirBrief): string[] {
 
 function healthAnswer(b: AirBrief): string[] {
   const lines = [
-    'Seek emergency care right away (India: call 112 or 108) for chest pain, severe breathlessness, bluish lips or confusion.',
+    `Seek emergency care right away (call ${b.region.emergencyNumber}) for chest pain, severe breathlessness, bluish lips or confusion.`,
     `Air today: ${b.current.category.label} (${b.standard.shortName} ${b.current.aqi}). ${b.risk.headline}`,
   ];
   for (const m of b.risk.memberAdvice
@@ -160,6 +161,9 @@ function smogAnswer(b: AirBrief): string[] {
         `Next ${b.forecast.trend.lookaheadHours} h: AQI ${b.forecast.trend.now} → ~${b.forecast.trend.next} (${b.forecast.trend.direction}).`,
       ),
     );
+  }
+  if (b.policy) {
+    lines.push(bullet(`${b.policy.name}: ${b.policy.stageLabel}. ${b.policy.forYou[0] ?? ''}`));
   }
   return lines;
 }

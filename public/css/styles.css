@@ -536,6 +536,9 @@ tr.current th {
   width: 100%;
   height: var(--h, 4%);
   border-radius: 3px 3px 0 0;
+  /* Pale levels (yellow-green, yellow) are < 3:1 against the card, so every bar
+     gets an edge in the text colour to meet WCAG 1.4.11 non-text contrast. */
+  box-shadow: inset 0 0 0 1px var(--text);
 }
 
 .bar-hour {
@@ -754,6 +757,69 @@ tr.current th {
   padding: 1rem clamp(1rem, 4vw, 2.5rem) 2rem;
   color: var(--muted);
   font-size: 0.9rem;
+}
+
+.policy {
+  margin-top: 1rem;
+  padding: 0.9rem 1rem;
+  border-radius: 10px;
+  border: 2px solid var(--accent);
+}
+
+.policy-for-you {
+  font-weight: 700;
+  margin-bottom: 0.25rem;
+}
+
+.community-headline {
+  border-radius: 10px;
+  padding: 0.9rem 1rem;
+  margin-bottom: 1rem;
+  background: var(--ok-bg);
+  border-left: 6px solid var(--brand);
+}
+
+.community-figure {
+  font-size: 1.25rem;
+  font-weight: 800;
+  margin: 0 0 0.25rem;
+}
+
+/* Users who ask the OS for more contrast get solid borders and full-strength text. */
+@media (prefers-contrast: more) {
+  :root {
+    --muted: var(--text);
+    --border: var(--text);
+  }
+
+  .hint,
+  .msg-source,
+  thead th {
+    color: var(--text);
+  }
+}
+
+/* Windows high-contrast themes: keep structure visible with system colours. */
+@media (forced-colors: active) {
+  .bar,
+  .aqi-badge,
+  .verdict,
+  .smog,
+  .policy,
+  .community-headline,
+  .why,
+  .tag {
+    forced-color-adjust: none;
+    border: 1px solid CanvasText;
+  }
+
+  .bar {
+    background: CanvasText;
+  }
+
+  :focus-visible {
+    outline: 3px solid Highlight;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

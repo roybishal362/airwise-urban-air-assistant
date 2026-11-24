@@ -7,7 +7,7 @@ import {
   compareCommute,
   computeModeImpact,
   treesEquivalent,
-} from '../../src/domain/impact.js';
+} from '../../src/domain/impact/index.js';
 import {
   MODEL,
   buildIndoorPlan,
@@ -15,8 +15,11 @@ import {
   recommendedCadr,
   roomVolume,
 } from '../../src/domain/indoor.js';
+import { resolveRegion } from '../../src/domain/region.js';
 import type { TimeWindow } from '../../src/domain/types.js';
-import { makeHousehold } from '../fixtures/data.js';
+import { DELHI, makeHousehold } from '../fixtures/data.js';
+
+const INDIA = resolveRegion(DELHI);
 
 const window = (level: 0 | 1 | 2 | 3 | 4 | 5, averageAqi = 80): TimeWindow => ({
   start: '2026-11-24T14:00',
@@ -212,7 +215,7 @@ describe('compareCommute', () => {
 describe('buildSustainableActions', () => {
   it("quantifies the default family's actions", () => {
     const household = makeHousehold();
-    const actions = buildSustainableActions(household, compareCommute(household, 100, 3));
+    const actions = buildSustainableActions(household, compareCommute(household, 100, 3), INDIA);
     expect(actions.map((a) => a.id)).toEqual([
       'switch-commute',
       'no-idling',
@@ -233,7 +236,7 @@ describe('buildSustainableActions', () => {
 
   it('scales every figure by the number of households acting together', () => {
     const household = makeHousehold({ communityHouseholds: 50 });
-    const actions = buildSustainableActions(household, compareCommute(household, 100, 3));
+    const actions = buildSustainableActions(household, compareCommute(household, 100, 3), INDIA);
     for (const action of actions) {
       for (const key of ['co2KgPerYear', 'pm25GPerYear', 'noxGPerYear'] as const) {
         const one = action.perHousehold[key];
@@ -252,7 +255,7 @@ describe('buildSustainableActions', () => {
         heating: 'wood_or_coal',
       },
     });
-    const ids = buildSustainableActions(household, compareCommute(household, 100, 3)).map(
+    const ids = buildSustainableActions(household, compareCommute(household, 100, 3), INDIA).map(
       (a) => a.id,
     );
     expect(ids).toEqual(
@@ -264,7 +267,7 @@ describe('buildSustainableActions', () => {
     const household = makeHousehold({
       lifestyle: { ...makeHousehold().lifestyle, commuteMode: 'none' },
     });
-    expect(buildSustainableActions(household, null).map((a) => a.id)).toEqual([
+    expect(buildSustainableActions(household, null, INDIA).map((a) => a.id)).toEqual([
       'never-burn-waste',
       'save-electricity',
     ]);

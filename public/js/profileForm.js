@@ -4,6 +4,19 @@
 
 /** @typedef {import('./storage.js').Profile} Profile */
 
+/** A validation error tied to one form field, so the UI can mark and focus it. */
+export class FieldError extends RangeError {
+  /**
+   * @param {string} field
+   * @param {string} message
+   */
+  constructor(field, message) {
+    super(message);
+    this.name = 'FieldError';
+    this.field = field;
+  }
+}
+
 /**
  * @param {HTMLFormElement} form
  * @param {string} name
@@ -32,13 +45,13 @@ function number(form, name, min, max, label) {
   const input = field(form, name);
   const value = Number(input.value);
   if (input.value.trim() === '' || !Number.isFinite(value) || value < min || value > max) {
-    throw new RangeError(`${label} must be between ${min} and ${max}.`);
+    throw new FieldError(name, `${label} must be between ${min} and ${max}.`);
   }
   return value;
 }
 
 /**
- * Read and validate the form. Throws RangeError with a user-facing message.
+ * Read and validate the form. Throws FieldError with a user-facing message.
  * @param {HTMLFormElement} form
  * @returns {Profile}
  */
@@ -49,7 +62,7 @@ export function readProfile(form) {
     seniors: number(form, 'seniors', 0, 20, 'Older adults'),
   };
   if (members.adults + members.children + members.seniors < 1) {
-    throw new RangeError('Add at least one person to your household.');
+    throw new FieldError('adults', 'Add at least one person to your household.');
   }
   const conditions = Array.from(form.querySelectorAll('input[name="conditions"]:checked')).map(
     (node) => /** @type {HTMLInputElement} */ (node).value,

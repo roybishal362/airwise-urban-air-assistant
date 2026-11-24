@@ -70,6 +70,18 @@ export function trapRiskLabel(risk) {
 }
 
 /**
+ * BCP 47 language of a reply: 'hi' when it is mostly Devanagari, else 'en'.
+ * Tagging Hindi answers lets screen readers switch to a Hindi voice.
+ * @param {string} text
+ */
+export function detectLanguage(text) {
+  const letters = text.match(/\p{L}/gu) ?? [];
+  if (letters.length === 0) return 'en';
+  const devanagari = letters.filter((ch) => /\p{Script=Devanagari}/u.test(ch)).length;
+  return devanagari / letters.length > 0.3 ? 'hi' : 'en';
+}
+
+/**
  * Split an assistant reply into paragraphs and bullet lists, so it can be
  * rendered with real list semantics without parsing any HTML.
  * @param {string} text

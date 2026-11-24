@@ -9,7 +9,8 @@ const optionalSecret = z.preprocess(
 
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
-  PORT: z.coerce.number().int().min(1).max(65_535).default(8080),
+  // 0 asks the OS for any free port (used by tests).
+  PORT: z.coerce.number().int().min(0).max(65_535).default(8080),
   LOG_LEVEL: z.enum(['debug', 'info', 'warn', 'error', 'silent']).default('info'),
   TRUST_PROXY_HOPS: z.coerce.number().int().min(0).max(5).default(0),
   UPSTREAM_TIMEOUT_MS: z.coerce.number().int().min(500).max(30_000).default(6000),
