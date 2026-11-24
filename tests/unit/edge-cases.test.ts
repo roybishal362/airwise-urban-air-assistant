@@ -71,6 +71,9 @@ describe('rule answers describe every kind of time window', () => {
       risk: { ...base.risk, reasons: [] },
     };
     expect(composeRuleAnswer('status', sparse)).toMatch(/Top tip: Build a DIY fan filter|Top tip:/);
+    expect(composeRuleAnswer('status', sparse)).toMatch(
+      /- Source: Modelled estimate \(Copernicus CAMS/,
+    );
     expect(composeRuleAnswer('outdoor', sparse)).not.toMatch(/Children \(/);
   });
 });

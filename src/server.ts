@@ -9,6 +9,7 @@ import { createAssistant } from './services/assistant/assistantService.js';
 import { selectProvider } from './services/assistant/llm.js';
 import { createBriefService } from './services/briefService.js';
 import { createOpenMeteoClient, type OpenMeteoClient } from './services/openMeteo.js';
+import { createOpenAqClient, type StationClient } from './services/openaq.js';
 
 export interface RunningServer {
   server: Server;
@@ -23,12 +24,18 @@ export interface RunningServer {
  */
 export async function startServer(
   env: NodeJS.ProcessEnv = process.env,
-  overrides: { client?: OpenMeteoClient } = {},
+  overrides: { client?: OpenMeteoClient; stations?: StationClient | null } = {},
 ): Promise<RunningServer> {
   const config = loadConfig(env);
   const logger = createLogger(config.logLevel);
   const briefService = createBriefService({
     client: overrides.client ?? createOpenMeteoClient({ timeoutMs: config.upstreamTimeoutMs }),
+    stations:
+      overrides.stations !== undefined
+        ? overrides.stations
+        : config.openAqApiKey
+          ? createOpenAqClient({ apiKey: config.openAqApiKey, timeoutMs: config.upstreamTimeoutMs })
+          : null,
     logger,
   });
   const assistant = createAssistant(selectProvider(config.llm), logger);
@@ -46,7 +53,12 @@ export async function startServer(
     server.once('error', reject);
     server.once('listening', () => {
       const { port } = server.address() as AddressInfo;
-      logger.info('AirWise listening', { port, assistant: assistant.mode, env: config.env });
+      logger.info('AirWise listening', {
+        port,
+        assistant: assistant.mode,
+        stations: config.openAqApiKey ? 'openaq' : 'model-only',
+        env: config.env,
+      });
       resolve({
         server,
         port,

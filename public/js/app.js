@@ -5,6 +5,7 @@ import { setupImpactControls } from './controllers/impact.js';
 import { setupProfile } from './controllers/profile.js';
 import { setupSearch } from './controllers/search.js';
 import { setupShare } from './controllers/share.js';
+import { setupTabs } from './controllers/tabs.js';
 import { setupVoice } from './controllers/voice.js';
 import { byId, el, replaceChildren } from './dom.js';
 import { renderBrief } from './render/index.js';
@@ -81,7 +82,14 @@ export function startApp(options = {}) {
   const results = byId('results', HTMLDivElement);
   const placeInput = byId('place-input', HTMLInputElement);
   const currentPlace = byId('current-place', HTMLParagraphElement);
+  const locationAqi = byId('location-aqi', HTMLSpanElement);
+  const landing = byId('landing', HTMLElement);
+  const howItWorks = byId('how-it-works', HTMLUListElement);
+  const changeCity = byId('change-city', HTMLButtonElement);
   const targets = collectTargets();
+  const tabs = setupTabs({
+    tablist: /** @type {HTMLElement} */ (document.querySelector('[role="tablist"]')),
+  });
   const hadProfile = env.storage.getItem('airwise.profile.v1') !== null;
   const state = {
     profile: loadProfile(env.storage),
@@ -105,8 +113,29 @@ export function startApp(options = {}) {
 
   function showCurrentPlace() {
     if (!state.place) return;
-    currentPlace.hidden = false;
-    replaceChildren(currentPlace, 'Showing plan for ', el('strong', { text: state.place.name }));
+    replaceChildren(currentPlace, 'Plan for ', el('strong', { text: state.place.name }));
+  }
+
+  /**
+   * Swap the landing page for the tabbed app once a plan exists.
+   * @param {boolean} showApp
+   */
+  function setView(showApp) {
+    document.body.dataset.view = showApp ? 'app' : 'landing';
+    landing.hidden = showApp;
+    howItWorks.hidden = showApp;
+    changeCity.setAttribute('aria-expanded', String(!showApp));
+  }
+  setView(false);
+
+  /** @param {AirBrief} brief */
+  function showLocationAqi(brief) {
+    locationAqi.textContent = `${brief.standard.shortName} ${brief.current.aqi} · ${brief.current.category.label}`;
+    // CSSOM assignment is CSP-safe.
+    locationAqi.style.backgroundColor = brief.current.category.color;
+    locationAqi.style.color = brief.current.category.textColor;
+    byId('location-source', HTMLSpanElement).textContent =
+      brief.dataSource.kind === 'station' ? '● Live station data' : 'Model estimate';
   }
 
   const impact = setupImpactControls({
@@ -139,11 +168,13 @@ export function startApp(options = {}) {
       state.brief = brief;
       renderBrief(brief, targets, impact.pledged);
       document.body.dataset.aqiLevel = String(brief.current.category.level);
+      showLocationAqi(brief);
       results.hidden = false;
+      setView(true);
       setStatus(
         `Plan ready for ${place.name}: ${brief.current.category.label}, AQI ${brief.current.aqi}.`,
       );
-      if (focusResults) byId('now', HTMLElement).focus();
+      if (focusResults) tabs.select('today', { focus: 'panel' });
     } catch (error) {
       setStatus(errorMessage(error), 'error');
     } finally {
@@ -177,8 +208,6 @@ export function startApp(options = {}) {
   const profile = setupProfile({
     ui: {
       form: byId('profile-form', HTMLFormElement),
-      panel: byId('profile-panel', HTMLDivElement),
-      toggle: byId('edit-family', HTMLButtonElement),
       summary: byId('family-summary', HTMLUListElement),
       hint: byId('family-hint', HTMLParagraphElement),
       error: byId('profile-error', HTMLParagraphElement),
@@ -250,7 +279,21 @@ export function startApp(options = {}) {
     })
     .catch(() => undefined);
 
+  changeCity.addEventListener('click', () => {
+    const opening = landing.hidden;
+    landing.hidden = !opening;
+    changeCity.setAttribute('aria-expanded', String(opening));
+    if (opening) placeInput.focus();
+  });
+
   showCurrentPlace();
   const initialLoad = loadBrief();
-  return { state, chat, loadBrief, choosePlace, ready: Promise.all([health, initialLoad]) };
+  return {
+    state,
+    chat,
+    tabs,
+    loadBrief,
+    choosePlace,
+    ready: Promise.all([health, initialLoad]),
+  };
 }

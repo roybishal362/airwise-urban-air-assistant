@@ -87,3 +87,18 @@ export interface TimeWindow {
   peakAqi: number;
   level: SeverityLevel;
 }
+
+/** One monitoring station that contributed to a measured reading. */
+export interface StationInfo {
+  name: string;
+  distanceKm: number;
+  /** Local wall-clock time of the measurement, e.g. `2026-11-24T15:00`. */
+  measuredAtLocal: LocalTime;
+}
+
+/** Measured concentrations (µg/m³) averaged over the nearest fresh stations. */
+export interface StationSnapshot {
+  provider: string;
+  stations: StationInfo[];
+  concentrations: Concentrations;
+}

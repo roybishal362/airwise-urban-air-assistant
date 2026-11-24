@@ -133,8 +133,14 @@ export function renderNow(brief) {
         {},
         el('p', {
           className: 'place-line',
-          text: `${location.name} · measured ${clock(observedAt)} local time`,
+          text: `${location.name} · updated ${clock(observedAt)} local time`,
         }),
+        el(
+          'p',
+          { className: `source-line source-${brief.dataSource.kind}` },
+          icon(brief.dataSource.kind === 'station' ? 'check' : 'alert'),
+          el('span', { text: brief.dataSource.label }),
+        ),
         el('p', { className: 'now-meaning', text: current.category.meaning }),
         el(
           'div',

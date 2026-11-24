@@ -7,8 +7,6 @@ import { saveProfile } from '../storage.js';
  * @typedef {import('../storage.js').Profile} Profile
  * @typedef {{
  *   form: HTMLFormElement,
- *   panel: HTMLElement,
- *   toggle: HTMLButtonElement,
  *   summary: HTMLUListElement,
  *   hint: HTMLParagraphElement,
  *   error: HTMLParagraphElement,
@@ -71,18 +69,11 @@ function setupSteppers(form) {
 }
 
 /**
- * Visual household editor: steppers, chips and tiles, collapsing into a
- * one-line summary once the family is set up.
+ * Visual household editor (its own "Family" tab) plus the summary pills
+ * shown on the "Today" tab.
  * @param {ProfileOptions} options
  */
 export function setupProfile({ ui, storage, getProfile, setProfile, onSaved }) {
-  /** @param {boolean} open */
-  function setOpen(open) {
-    ui.panel.hidden = !open;
-    ui.toggle.setAttribute('aria-expanded', String(open));
-    ui.toggle.textContent = open ? 'Hide family details' : 'Edit family';
-  }
-
   function renderSummary() {
     replaceChildren(
       ui.summary,
@@ -98,7 +89,6 @@ export function setupProfile({ ui, storage, getProfile, setProfile, onSaved }) {
     } catch (error) {
       ui.error.textContent = error instanceof RangeError ? error.message : 'Please check the form.';
       ui.error.hidden = false;
-      setOpen(true);
       if (error instanceof FieldError) markField(ui.form, error);
       return;
     }
@@ -107,12 +97,10 @@ export function setupProfile({ ui, storage, getProfile, setProfile, onSaved }) {
     saveProfile(storage, profile);
     renderSummary();
     ui.hint.textContent = 'Saved in this browser. Every recommendation now uses your family.';
-    setOpen(false);
     onSaved();
   }
 
   setupSteppers(ui.form);
-  ui.toggle.addEventListener('click', () => setOpen(ui.panel.hidden === true));
   ui.form.addEventListener('submit', (event) => {
     event.preventDefault();
     submit();
@@ -120,7 +108,5 @@ export function setupProfile({ ui, storage, getProfile, setProfile, onSaved }) {
 
   writeProfile(ui.form, getProfile());
   renderSummary();
-  // The plan leads; the editor stays one click away instead of a wall of fields.
-  setOpen(false);
-  return { setOpen, renderSummary };
+  return { renderSummary };
 }

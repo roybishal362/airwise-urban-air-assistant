@@ -23,6 +23,7 @@ function statusAnswer(b: AirBrief): string[] {
     bullet(
       `Top tip: ${b.routine[0]?.title ?? b.indoor.hacks[0]?.title ?? 'keep indoor air clean'}.`,
     ),
+    bullet(`Source: ${b.dataSource.label}`),
   ];
 }
 

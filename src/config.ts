@@ -22,6 +22,7 @@ const envSchema = z.object({
   ANTHROPIC_API_KEY: optionalSecret,
   ANTHROPIC_MODEL: z.string().trim().min(1).default('claude-opus-5-5'),
   LLM_TIMEOUT_MS: z.coerce.number().int().min(1000).max(60_000).default(12_000),
+  OPENAQ_API_KEY: optionalSecret,
 });
 
 export interface AppConfig {
@@ -32,6 +33,8 @@ export interface AppConfig {
   upstreamTimeoutMs: number;
   rateLimitPerMinute: number;
   chatRateLimitPerMinute: number;
+  /** Free key for measured station data (https://explore.openaq.org/register). */
+  openAqApiKey?: string | undefined;
   llm: {
     provider: 'auto' | 'gemini' | 'claude' | 'none';
     geminiApiKey?: string | undefined;
@@ -58,6 +61,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     upstreamTimeoutMs: e.UPSTREAM_TIMEOUT_MS,
     rateLimitPerMinute: e.RATE_LIMIT_PER_MINUTE,
     chatRateLimitPerMinute: e.CHAT_RATE_LIMIT_PER_MINUTE,
+    openAqApiKey: e.OPENAQ_API_KEY,
     llm: {
       provider: e.LLM_PROVIDER,
       geminiApiKey: e.GEMINI_API_KEY,

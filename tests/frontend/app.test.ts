@@ -69,7 +69,7 @@ describe('start-up', () => {
     await app.ready;
     expect($('results').hidden).toBe(false);
     expect($('status').textContent).toMatch(/^Plan ready for Delhi/);
-    expect($('current-place').textContent).toBe('Showing plan for Delhi');
+    expect($('current-place').textContent).toBe('Plan for Delhi');
     expect($('chat-mode').textContent).toMatch(/Google Gemini/);
     expect(document.querySelector('.policy h3')?.textContent).toMatch(/GRAP Stage/);
     expect(document.querySelector('.community-figure')?.textContent).toMatch(/avoided a year/);
@@ -96,7 +96,7 @@ describe('start-up', () => {
       api: makeApi({ fetchHealth: vi.fn(async () => Promise.reject(new Error('down'))) }),
     });
     await failing.app.ready;
-    expect($('chat-mode').textContent).toMatch(/Choose a place above/);
+    expect($('chat-mode').textContent).toMatch(/Ask anything about your air/);
   });
 
   it('announces a failed plan load assertively', async () => {
@@ -143,7 +143,7 @@ describe('place search', () => {
       expect.objectContaining({ location: DELHI, standard: 'auto' }),
     );
     expect(JSON.parse(storage.getItem('airwise.place.v1') ?? '{}').name).toBe('Delhi');
-    expect(document.activeElement?.id).toBe('now');
+    expect(document.activeElement?.id).toBe('panel-today');
     expect($('place-results').hidden).toBe(true);
   });
 

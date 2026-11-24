@@ -116,16 +116,17 @@ describe('household summary', () => {
 });
 
 describe('family editor', () => {
-  it('starts collapsed with a sample-family hint, and the toggle opens it', async () => {
+  it('shows a sample-family hint on Today and opens the Family tab from "Edit family"', async () => {
     const { app } = bootWithPlan();
     await app.ready;
-    expect($('profile-panel').hidden).toBe(true);
-    expect($('edit-family').getAttribute('aria-expanded')).toBe('false');
+    expect($('panel-family').hidden).toBe(true);
     expect($('family-hint').textContent).toMatch(/sample family/);
     expect($('family-summary').children.length).toBeGreaterThan(3);
     $<HTMLButtonElement>('edit-family').click();
-    expect($('profile-panel').hidden).toBe(false);
-    expect($('edit-family').textContent).toBe('Hide family details');
+    expect($('panel-family').hidden).toBe(false);
+    expect($('panel-today').hidden).toBe(true);
+    expect($('tab-family').getAttribute('aria-selected')).toBe('true');
+    expect(document.activeElement).toBe($('panel-family'));
   });
 
   it('steppers move within the field limits', () => {
@@ -157,7 +158,7 @@ describe('family editor', () => {
     });
     expect(() => readProfile(form)).toThrow('Choose your cooking fuel.');
     form.requestSubmit();
-    expect($('profile-panel').hidden).toBe(false);
+    expect($('profile-error').hidden).toBe(false);
     expect(document.activeElement?.getAttribute('name')).toBe('cookingFuel');
   });
 
@@ -166,8 +167,8 @@ describe('family editor', () => {
     await app.ready;
     $<HTMLFormElement>('profile-form').requestSubmit();
     expect($('family-hint').textContent).toMatch(/Saved in this browser/);
-    expect($('profile-panel').hidden).toBe(true);
     await vi.waitFor(() => expect(api.fetchBrief).toHaveBeenCalledTimes(2));
+    await vi.waitFor(() => expect($('tab-today').getAttribute('aria-selected')).toBe('true'));
   });
 });
 

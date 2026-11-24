@@ -1,5 +1,6 @@
 import { calculateAqi, resolveStandard } from './aqi/calculator.js';
 import { POLLUTANT_LABELS, STANDARDS } from './aqi/standards.js';
+import { calibrateAir, type DataSource } from './calibration.js';
 import { InsufficientDataError } from './errors.js';
 import {
   buildGlance,
@@ -34,6 +35,7 @@ import {
   type PollutantId,
   type StandardId,
   type StandardPreference,
+  type StationSnapshot,
   type WeatherSnapshot,
 } from './types.js';
 
@@ -86,6 +88,8 @@ export interface AirBrief {
   glance: GlanceTile[];
   /** Today's PM2.5 in relatable terms: cigarettes a day and multiples of the WHO limit. */
   exposure: ExposureEquivalents;
+  /** Where "right now" comes from: measured stations, or the model as a labelled fallback. */
+  dataSource: DataSource;
   summary: string;
 }
 
@@ -95,6 +99,8 @@ export interface BriefInput {
   weather: WeatherSnapshot | null;
   household: Household;
   standard: StandardPreference;
+  /** Measured station readings; when present they replace the model's "now". */
+  station?: StationSnapshot | null;
 }
 
 /** Index of the hourly entry matching `currentTime` (or the latest one before it). */
@@ -140,18 +146,20 @@ function summarise(brief: Omit<AirBrief, 'summary'>): string {
 }
 
 export function buildBrief(input: BriefInput): AirBrief {
-  const { location, air, weather, household } = input;
-  const region = resolveRegion(location, air.timezone);
+  const { location, weather, household } = input;
+  const region = resolveRegion(location, input.air.timezone);
   const standardId = resolveStandard(input.standard, {
     countryCode: location.countryCode,
-    timezone: air.timezone,
+    timezone: input.air.timezone,
   });
   const standard = STANDARDS[standardId];
 
   const index = currentHourIndex(
-    air.hourly.map((h) => h.time),
-    air.currentTime,
+    input.air.hourly.map((h) => h.time),
+    input.air.currentTime,
   );
+  // Measured station values replace the model's "now"; the forecast is rescaled to match.
+  const { air, source: dataSource } = calibrateAir(input.air, input.station ?? null, index);
   const upcoming = air.hourly.slice(index, index + 24);
   const reading =
     calculateAqi(air.current, standardId) ??
@@ -247,6 +255,7 @@ export function buildBrief(input: BriefInput): AirBrief {
     policy: localPolicy(region, naqi, household),
     glance: buildGlance({ reading, windows, commute, household, now: air.currentTime }),
     exposure: exposureEquivalents(outdoorPm25),
+    dataSource,
   };
   return { ...brief, summary: summarise(brief) };
 }
