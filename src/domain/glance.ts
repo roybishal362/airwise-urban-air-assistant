@@ -28,6 +28,7 @@ export interface GlanceInput {
 
 const GASES: ReadonlySet<PollutantId> = new Set(['o3', 'no2', 'so2', 'co']);
 
+/** Whether a mask is needed outside today, and whether it helps against the main pollutant. */
 function maskTile({ reading }: GlanceInput): GlanceTile {
   const level = reading.category.level;
   if (level <= 1) {
@@ -57,6 +58,7 @@ function maskTile({ reading }: GlanceInput): GlanceTile {
   };
 }
 
+/** When to open the windows, or to keep them shut. */
 function windowsTile({ windows, now }: GlanceInput): GlanceTile {
   const w = windows.ventilation;
   if (w && w.level <= 2) {
@@ -77,6 +79,7 @@ function windowsTile({ windows, now }: GlanceInput): GlanceTile {
   };
 }
 
+/** The best hour for outdoor exercise, with a stricter limit for sensitive households. */
 function exerciseTile({ windows, household, now }: GlanceInput): GlanceTile {
   const w = windows.outdoor;
   const threshold = assessVulnerability(household).isSensitive ? 1 : 2;
@@ -100,6 +103,7 @@ function exerciseTile({ windows, household, now }: GlanceInput): GlanceTile {
   };
 }
 
+/** When children can play outside; null for households without children. */
 function kidsTile({ windows, household, now }: GlanceInput): GlanceTile | null {
   if (household.members.children === 0) return null;
   const w = windows.play;
@@ -130,6 +134,7 @@ function kidsTile({ windows, household, now }: GlanceInput): GlanceTile | null {
   };
 }
 
+/** The cleanest commute that suits today's air; null when the household does not commute. */
 function commuteTile({ commute }: GlanceInput): GlanceTile | null {
   if (!commute) return null;
   const best = commute.alternatives.find(
@@ -153,6 +158,7 @@ function commuteTile({ commute }: GlanceInput): GlanceTile | null {
   };
 }
 
+/** The "today at a glance" decision tiles that apply to this household. */
 export function buildGlance(input: GlanceInput): GlanceTile[] {
   return [
     maskTile(input),
@@ -176,6 +182,7 @@ export interface ExposureEquivalents {
   whoMultiple: number;
 }
 
+/** PM2.5 exposure in relatable terms: cigarettes a day and multiples of the WHO limit. */
 export function exposureEquivalents(pm25: number): ExposureEquivalents {
   const safe = Math.max(0, pm25);
   return {

@@ -84,9 +84,11 @@ export function alternativeNote(
   return 'Lower emissions and similar or lower personal exposure.';
 }
 
+/** True for every car commute, fuel or electric. */
 export const isCar = (mode: CommuteMode): boolean =>
   mode === 'car_petrol' || mode === 'car_diesel' || mode === 'car_cng' || mode === 'ev_car';
 
+/** Alternatives worth comparing: transit always, carpool for drivers, EV for fuel cars, cycling and walking within range. */
 function candidateModes(current: Exclude<CommuteMode, 'none'>, oneWayKm: number): TravelMode[] {
   const candidates: TravelMode[] = ['metro', 'bus'];
   if (isCar(current)) candidates.push('carpool');
@@ -99,6 +101,40 @@ function candidateModes(current: Exclude<CommuteMode, 'none'>, oneWayKm: number)
   }
   return candidates.filter((m) => m !== current);
 }
+
+/** Today's trip: distance, the air outside and the local grid. */
+interface Trip {
+  oneWayKm: number;
+  ambientPm25: number;
+  airLevel: SeverityLevel;
+  gridCo2KgPerKwh: number;
+}
+
+/** Rounded percentage change from `from` to `to`; 0 when there is no baseline. */
+const percentChange = (from: number, to: number): number =>
+  from > 0 ? Math.round(((to - from) / from) * 100) : 0;
+
+/** One alternative mode compared with today's commute: CO₂ saved, change in inhaled PM2.5, and today's verdict. */
+function compareMode(current: ModeImpact, mode: TravelMode, trip: Trip): CommuteAlternative {
+  const impact = computeModeImpact(mode, trip.oneWayKm, trip.ambientPm25, trip.gridCo2KgPerKwh);
+  const co2SavedKgPerYear = round(
+    (current.co2KgPerWeek - impact.co2KgPerWeek) * WORK_WEEKS_PER_YEAR,
+    0,
+  );
+  const inhaledChangePct = percentChange(current.inhaledPm25UgPerDay, impact.inhaledPm25UgPerDay);
+  const suitableToday = trip.airLevel <= 1 || inhaledChangePct <= MAX_EXPOSURE_INCREASE_PCT;
+  return {
+    ...impact,
+    co2SavedKgPerYear,
+    inhaledChangePct,
+    suitableToday,
+    note: alternativeNote(mode, inhaledChangePct, suitableToday),
+  };
+}
+
+/** Health first: options that are safe today rank above bigger CO₂ savings. */
+const healthFirst = (a: CommuteAlternative, b: CommuteAlternative): number =>
+  Number(b.suitableToday) - Number(a.suitableToday) || b.co2SavedKgPerYear - a.co2SavedKgPerYear;
 
 /**
  * Compare today's commute with realistic alternatives on three axes: CO₂
@@ -115,38 +151,12 @@ export function compareCommute(
   const { commuteMode, commuteKm } = household.lifestyle;
   if (commuteMode === 'none' || commuteKm <= 0) return null;
 
+  const trip: Trip = { oneWayKm: commuteKm, ambientPm25, airLevel, gridCo2KgPerKwh };
   const current = computeModeImpact(commuteMode, commuteKm, ambientPm25, gridCo2KgPerKwh);
   const alternatives = candidateModes(commuteMode, commuteKm)
-    .map((mode): CommuteAlternative => {
-      const impact = computeModeImpact(mode, commuteKm, ambientPm25, gridCo2KgPerKwh);
-      const co2SavedKgPerYear = round(
-        (current.co2KgPerWeek - impact.co2KgPerWeek) * WORK_WEEKS_PER_YEAR,
-        0,
-      );
-      const inhaledChangePct =
-        current.inhaledPm25UgPerDay > 0
-          ? Math.round(
-              ((impact.inhaledPm25UgPerDay - current.inhaledPm25UgPerDay) /
-                current.inhaledPm25UgPerDay) *
-                100,
-            )
-          : 0;
-      const suitableToday = airLevel <= 1 || inhaledChangePct <= MAX_EXPOSURE_INCREASE_PCT;
-      return {
-        ...impact,
-        co2SavedKgPerYear,
-        inhaledChangePct,
-        suitableToday,
-        note: alternativeNote(mode, inhaledChangePct, suitableToday),
-      };
-    })
+    .map((mode) => compareMode(current, mode, trip))
     .filter((alt) => alt.co2SavedKgPerYear > 0 || alt.inhaledChangePct < 0)
-    // Health first: options that are safe today rank above bigger CO₂ savings.
-    .sort(
-      (a, b) =>
-        Number(b.suitableToday) - Number(a.suitableToday) ||
-        b.co2SavedKgPerYear - a.co2SavedKgPerYear,
-    );
+    .sort(healthFirst);
 
   return { current, alternatives };
 }

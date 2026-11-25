@@ -8,6 +8,37 @@ import { byId, el, replaceChildren } from './dom.js';
  */
 
 /**
+ * "Plan for <city>" in the location bar.
+ * @param {Place} place
+ */
+function showPlace(place) {
+  replaceChildren(
+    byId('current-place', HTMLParagraphElement),
+    'Plan for ',
+    el('strong', { text: place.name }),
+  );
+}
+
+/**
+ * The AQI pill and the live-data or model badge in the location bar.
+ * @param {AirBrief} brief
+ */
+function showAqi(brief) {
+  const pill = byId('location-aqi', HTMLSpanElement);
+  const { category } = brief.current;
+  pill.textContent = `${brief.standard.shortName} ${String(brief.current.aqi)} · ${category.label}`;
+  // CSSOM assignment is CSP-safe.
+  pill.style.backgroundColor = category.color;
+  pill.style.color = category.textColor;
+  document.body.dataset.aqiLevel = String(category.level);
+  const source = byId('location-source', HTMLSpanElement);
+  const live = brief.dataSource.kind === 'station';
+  // The "live" dot is drawn in CSS so screen readers don't read "black circle".
+  source.textContent = live ? 'Live station data' : 'Model estimate';
+  source.classList.toggle('is-live', live);
+}
+
+/**
  * The app shell around the plan: the status line, the landing ↔ app view,
  * the page title and the location bar. Presentation only; no data loading.
  */
@@ -47,31 +78,6 @@ export function createShell() {
     document.title = placeName
       ? [section, placeName, 'AirWise'].filter(Boolean).join(' · ')
       : appTitle;
-  }
-
-  /** @param {Place} place */
-  function showPlace(place) {
-    replaceChildren(
-      byId('current-place', HTMLParagraphElement),
-      'Plan for ',
-      el('strong', { text: place.name }),
-    );
-  }
-
-  /** @param {AirBrief} brief */
-  function showAqi(brief) {
-    const pill = byId('location-aqi', HTMLSpanElement);
-    const { category } = brief.current;
-    pill.textContent = `${brief.standard.shortName} ${String(brief.current.aqi)} · ${category.label}`;
-    // CSSOM assignment is CSP-safe.
-    pill.style.backgroundColor = category.color;
-    pill.style.color = category.textColor;
-    document.body.dataset.aqiLevel = String(category.level);
-    const source = byId('location-source', HTMLSpanElement);
-    const live = brief.dataSource.kind === 'station';
-    // The "live" dot is drawn in CSS so screen readers don't read "black circle".
-    source.textContent = live ? 'Live station data' : 'Model estimate';
-    source.classList.toggle('is-live', live);
   }
 
   const focusSearch = () => placeInput.focus();

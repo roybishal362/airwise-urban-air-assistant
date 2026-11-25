@@ -92,6 +92,7 @@ const geocodingSchema = z.object({
 
 type AirRecord = Partial<Record<(typeof AIR_VARIABLES)[number], number | null | undefined>>;
 
+/** One hourly air record as pollutant concentrations. */
 function toConcentrations(record: AirRecord): Concentrations {
   return {
     pm2_5: record.pm2_5 ?? null,
@@ -103,6 +104,7 @@ function toConcentrations(record: AirRecord): Concentrations {
   };
 }
 
+/** Validate an upstream response, or throw an UpstreamError naming the source. */
 function parse<T>(schema: z.ZodType<T>, data: unknown, source: string): T {
   const result = schema.safeParse(data);
   if (!result.success) {
@@ -143,9 +145,11 @@ function pointUrl(
   return url;
 }
 
+/** The value at an index, or null when missing. */
 const valueAt = (values: (number | null)[] | undefined, i: number): number | null =>
   values?.[i] ?? null;
 
+/** Open-Meteo air-quality response → current and hourly concentrations. */
 function toAirSnapshot(data: z.infer<typeof airSchema>): AirSnapshot {
   const { hourly } = data;
   return {
@@ -166,6 +170,7 @@ function toAirSnapshot(data: z.infer<typeof airSchema>): AirSnapshot {
   };
 }
 
+/** Open-Meteo weather response → hourly temperature, humidity, wind and boundary-layer height. */
 function toWeatherSnapshot(data: z.infer<typeof weatherSchema>): WeatherSnapshot {
   const { hourly } = data;
   const hours: HourlyWeather[] = hourly.time.map((time, i) => ({
@@ -178,6 +183,7 @@ function toWeatherSnapshot(data: z.infer<typeof weatherSchema>): WeatherSnapshot
   return { timezone: data.timezone, hourly: hours };
 }
 
+/** Geocoding results → places with region, country and time zone. */
 function toPlaces(data: z.infer<typeof geocodingSchema>): GeoLocation[] {
   return (data.results ?? []).map((r) => ({
     name: r.name,
@@ -190,6 +196,7 @@ function toPlaces(data: z.infer<typeof geocodingSchema>): GeoLocation[] {
   }));
 }
 
+/** Client for Open-Meteo's air-quality, weather and geocoding APIs (fixed hosts, timeouts, retries). */
 export function createOpenMeteoClient({
   fetchFn = fetch,
   timeoutMs,

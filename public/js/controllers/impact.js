@@ -40,6 +40,46 @@ function savePledges(storage, pledged) {
 }
 
 /**
+ * Update numbers around the slider without re-creating it, so keyboard and pointer focus
+ * stay on the slider while it moves.
+ * @param {HTMLElement} container @param {AirBrief} brief @param {ReadonlySet<string>} pledged
+ */
+function refreshAroundSlider(container, brief, pledged) {
+  const fresh = renderImpact(brief, pledged);
+  const headline = renderCommunityHeadline(brief);
+  const swap = (/** @type {string} */ selector, /** @type {Element | null | undefined} */ next) => {
+    const current = container.querySelector(selector);
+    if (current && next) current.replaceWith(next);
+  };
+  swap('.impact-stats', headline.querySelector('.impact-stats'));
+  swap('.community-figure', headline.querySelector('.community-figure'));
+  swap(
+    '.actions',
+    fresh.find((node) => node?.classList?.contains('actions')),
+  );
+  const output = container.querySelector('.slider-value');
+  if (output) output.textContent = brief.community.households.toLocaleString('en-IN');
+}
+
+/**
+ * The community slider, when the event came from it.
+ * @param {Event} event
+ */
+const sliderFrom = (event) =>
+  event.target instanceof HTMLInputElement && event.target.id === 'community-range'
+    ? event.target
+    : null;
+
+/**
+ * Pledge an action, or take the pledge back.
+ * @param {Set<string>} pledged @param {string} id
+ */
+function togglePledge(pledged, id) {
+  if (pledged.has(id)) pledged.delete(id);
+  else pledged.add(id);
+}
+
+/**
  * Live community slider and pledge tracker. Both recompute on the client
  * from the server's per-household figures, so they respond instantly.
  * @param {ImpactOptions} options
@@ -53,45 +93,18 @@ export function setupImpactControls({
 }) {
   const pledged = loadPledges(storage);
 
-  /**
-   * Update numbers around the slider without re-creating it, so keyboard
-   * and pointer focus stay on the slider while it moves.
-   * @param {AirBrief} brief
-   */
-  function refreshAroundSlider(brief) {
-    const fresh = renderImpact(brief, pledged);
-    const headline = renderCommunityHeadline(brief);
-    const swap = (
-      /** @type {string} */ selector,
-      /** @type {Element | null | undefined} */ next,
-    ) => {
-      const current = container.querySelector(selector);
-      if (current && next) current.replaceWith(next);
-    };
-    swap('.impact-stats', headline.querySelector('.impact-stats'));
-    swap('.community-figure', headline.querySelector('.community-figure'));
-    swap(
-      '.actions',
-      fresh.find((node) => node?.classList?.contains('actions')),
-    );
-    const output = container.querySelector('.slider-value');
-    if (output) output.textContent = brief.community.households.toLocaleString('en-IN');
-  }
-
   container.addEventListener('input', (event) => {
-    const target = event.target;
+    const slider = sliderFrom(event);
     const brief = getBrief();
-    if (!(target instanceof HTMLInputElement) || target.id !== 'community-range' || !brief) return;
-    const scaled = scaleCommunity(brief, Number(target.value));
+    if (!slider || !brief) return;
+    const scaled = scaleCommunity(brief, Number(slider.value));
     setBrief(scaled);
-    refreshAroundSlider(scaled);
+    refreshAroundSlider(container, scaled, pledged);
   });
 
   container.addEventListener('change', (event) => {
-    const target = event.target;
-    if (target instanceof HTMLInputElement && target.id === 'community-range') {
-      onHouseholdsChange(Number(target.value));
-    }
+    const slider = sliderFrom(event);
+    if (slider) onHouseholdsChange(Number(slider.value));
   });
 
   container.addEventListener('click', (event) => {
@@ -99,10 +112,9 @@ export function setupImpactControls({
     const brief = getBrief();
     if (!(button instanceof HTMLButtonElement) || !brief) return;
     const id = button.dataset.pledge ?? '';
-    if (pledged.has(id)) pledged.delete(id);
-    else pledged.add(id);
+    togglePledge(pledged, id);
     savePledges(storage, pledged);
-    refreshAroundSlider(brief);
+    refreshAroundSlider(container, brief, pledged);
     container.querySelector('#pledge-summary')?.replaceWith(renderPledgeSummary(brief, pledged));
     /** @type {HTMLElement | null} */ (container.querySelector(`[data-pledge="${id}"]`))?.focus();
   });

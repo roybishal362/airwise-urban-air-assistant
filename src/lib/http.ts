@@ -12,8 +12,10 @@ export interface FetchJsonOptions {
 const USER_MESSAGE =
   'The live air-data service is not responding right now. Please try again shortly.';
 
+/** Resolve after `ms` milliseconds. */
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
+/** Statuses worth one retry: rate limiting and server errors. */
 const isTransientStatus = (status: number): boolean => status === 429 || status >= 500;
 
 /**

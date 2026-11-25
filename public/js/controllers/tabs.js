@@ -58,25 +58,69 @@ function keyTarget(key, index, count) {
   return move === undefined ? null : (move + count) % count;
 }
 
-/** @param {TabsOptions} options */
+/**
+ * Each tab with its id and the panel it controls.
+ * @param {HTMLElement} tablist @param {Window} win
+ * @returns {TabEntry[]}
+ */
+function collectEntries(tablist, win) {
+  return /** @type {HTMLButtonElement[]} */ ([...tablist.querySelectorAll('[role="tab"]')]).map(
+    (tab) => ({
+      id: String(tab.dataset.tab),
+      tab,
+      panel: win.document.getElementById(String(tab.getAttribute('aria-controls'))),
+    }),
+  );
+}
+
+/**
+ * The tab named in the URL, or '' when there is none.
+ * @param {Window} win
+ */
+function tabFromHash(win) {
+  const { hash } = win.location;
+  return hash.startsWith(HASH_PREFIX) ? hash.slice(HASH_PREFIX.length) : '';
+}
+
+/**
+ * Clicks, arrow keys, data-goto links and the back button all switch tabs.
+ * @param {{
+ *   tablist: HTMLElement,
+ *   win: Window,
+ *   ids: readonly string[],
+ *   select: (id: string, options?: SelectOptions) => string,
+ *   current: () => string,
+ * }} ctx
+ */
+function bindTabEvents({ tablist, win, ids, select, current }) {
+  tablist.addEventListener('click', (event) => {
+    const tab = /** @type {Element} */ (event.target).closest('[role="tab"]');
+    if (tab instanceof HTMLElement) select(String(tab.dataset.tab));
+  });
+  tablist.addEventListener('keydown', (event) => {
+    const next = keyTarget(event.key, ids.indexOf(current()), ids.length);
+    if (next === null) return;
+    event.preventDefault();
+    select(String(ids[next]), { focus: 'tab' });
+  });
+  // Any element with data-goto="<tab>" (e.g. "Edit family", "Ask a question") switches tabs.
+  win.document.addEventListener('click', (event) => {
+    const link = /** @type {Element} */ (event.target).closest('[data-goto]');
+    const goto = link instanceof HTMLElement ? String(link.dataset.goto) : '';
+    if (ids.includes(goto)) select(goto, { focus: 'panel' });
+  });
+  win.addEventListener('popstate', () => select(tabFromHash(win), { push: false }));
+}
+
+/**
+ * Wire up the tabs and open the one in the URL (or the first).
+ * @param {TabsOptions} options
+ */
 export function setupTabs({ tablist, onChange, win = window }) {
-  /** @type {TabEntry[]} */
-  const entries = /** @type {HTMLButtonElement[]} */ ([
-    ...tablist.querySelectorAll('[role="tab"]'),
-  ]).map((tab) => ({
-    id: String(tab.dataset.tab),
-    tab,
-    panel: win.document.getElementById(String(tab.getAttribute('aria-controls'))),
-  }));
+  const entries = collectEntries(tablist, win);
   const ids = entries.map((entry) => entry.id);
   const home = ids[0] ?? '';
   let current = home;
-
-  /** The tab named in the URL, or '' when there is none. */
-  const fromHash = () => {
-    const { hash } = win.location;
-    return hash.startsWith(HASH_PREFIX) ? hash.slice(HASH_PREFIX.length) : '';
-  };
 
   /**
    * Activate a tab (unknown ids fall back to the first tab).
@@ -96,24 +140,7 @@ export function setupTabs({ tablist, onChange, win = window }) {
     return target;
   }
 
-  tablist.addEventListener('click', (event) => {
-    const tab = /** @type {Element} */ (event.target).closest('[role="tab"]');
-    if (tab instanceof HTMLElement) select(String(tab.dataset.tab));
-  });
-  tablist.addEventListener('keydown', (event) => {
-    const next = keyTarget(event.key, ids.indexOf(current), ids.length);
-    if (next === null) return;
-    event.preventDefault();
-    select(String(ids[next]), { focus: 'tab' });
-  });
-  // Any element with data-goto="<tab>" (e.g. "Edit family", "Ask a question") switches tabs.
-  win.document.addEventListener('click', (event) => {
-    const link = /** @type {Element} */ (event.target).closest('[data-goto]');
-    const goto = link instanceof HTMLElement ? String(link.dataset.goto) : '';
-    if (ids.includes(goto)) select(goto, { focus: 'panel' });
-  });
-  win.addEventListener('popstate', () => select(fromHash(), { push: false }));
-
-  select(fromHash(), { push: false, scroll: false });
+  bindTabEvents({ tablist, win, ids, select, current: () => current });
+  select(tabFromHash(win), { push: false, scroll: false });
   return { select, current: () => current };
 }

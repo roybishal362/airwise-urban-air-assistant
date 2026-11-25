@@ -175,10 +175,12 @@ export const ACTION_FACTORS = {
   savedKwhPerDay: 1,
 } as const;
 
+/** Round to a number of decimal places (default 1). */
 export const round = (value: number, digits = 1): number => {
   const f = 10 ** digits;
   return Math.round(value * f) / f;
 };
 
+/** How many mature trees absorb this much CO₂ in a year. */
 export const treesEquivalent = (co2KgPerYear: number): number =>
   Math.round(co2KgPerYear / TREE_CO2_KG_PER_YEAR);

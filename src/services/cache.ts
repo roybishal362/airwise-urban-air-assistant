@@ -11,6 +11,10 @@ export class TtlCache<V> {
   private readonly entries = new Map<string, { value: V; expiresAt: number }>();
   private readonly inFlight = new Map<string, Promise<V>>();
 
+  /**
+   * @param ttlMs how long an entry stays fresh
+   * @param maxEntries capacity before the least recently used entry is evicted
+   */
   constructor(
     private readonly ttlMs: number,
     private readonly maxEntries: number,
@@ -19,10 +23,12 @@ export class TtlCache<V> {
     if (ttlMs <= 0 || maxEntries <= 0) throw new Error('ttlMs and maxEntries must be positive');
   }
 
+  /** Number of entries currently held. */
   get size(): number {
     return this.entries.size;
   }
 
+  /** A fresh entry (moved to most recently used), or undefined when missing or expired. */
   get(key: string): V | undefined {
     const entry = this.entries.get(key);
     if (!entry) return undefined;
@@ -36,6 +42,7 @@ export class TtlCache<V> {
     return entry.value;
   }
 
+  /** Store an entry, evicting the least recently used ones beyond capacity. */
   set(key: string, value: V): void {
     this.entries.delete(key);
     this.entries.set(key, { value, expiresAt: this.now() + this.ttlMs });
@@ -46,6 +53,7 @@ export class TtlCache<V> {
     }
   }
 
+  /** The cached value, or load it once even when many callers ask at the same time. */
   async getOrLoad(key: string, loader: () => Promise<V>): Promise<V> {
     const cached = this.get(key);
     if (cached !== undefined) return cached;

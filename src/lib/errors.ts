@@ -7,6 +7,12 @@
 export class AppError extends Error {
   readonly detail: string | undefined;
 
+  /**
+   * @param status HTTP status sent to the client
+   * @param code stable machine-readable error code
+   * @param message user-facing message
+   * @param options `detail` is written to server logs only
+   */
   constructor(
     readonly status: number,
     readonly code: string,
@@ -19,7 +25,9 @@ export class AppError extends Error {
   }
 }
 
+/** An upstream service failed or answered with something unusable (HTTP 502). */
 export class UpstreamError extends AppError {
+  /** @param message user-facing message @param options `detail` for server logs only */
   constructor(message: string, options?: { detail?: string }) {
     super(502, 'UPSTREAM_UNAVAILABLE', message, options);
     this.name = 'UpstreamError';

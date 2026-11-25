@@ -19,6 +19,7 @@ export interface Logger {
   error(message: string, fields?: Record<string, unknown>): void;
 }
 
+/** A JSON-lines logger that drops messages below `level` (errors and warnings go to stderr). */
 export function createLogger(level: LogLevel = 'info'): Logger {
   const write = (
     severity: Exclude<LogLevel, 'silent'>,

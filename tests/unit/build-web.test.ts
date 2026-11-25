@@ -23,7 +23,7 @@ afterAll(() => rm(out, { recursive: true, force: true }));
 const read = (publicPath: string) => readFile(path.join(out, publicPath), 'utf8');
 
 describe('production web build', () => {
-  it('bundles 26 modules into one hashed JS file and one hashed CSS file', async () => {
+  it('bundles 28 modules into one hashed JS file and one hashed CSS file', async () => {
     expect(built.script).toMatch(/^\/assets\/app-[A-Z0-9]{8}\.js$/);
     expect(built.stylesheet).toMatch(/^\/assets\/styles-[A-Z0-9]{8}\.css$/);
     expect((await readdir(path.join(out, 'assets'))).sort()).toEqual(
@@ -47,7 +47,7 @@ describe('production web build', () => {
   it('is smaller than the sources and copies the other static files', async () => {
     const total = Object.values(built.sizes).reduce((sum, s) => sum + s.gzip, 0);
     expect(total).toBeLessThan(32 * 1024);
-    for (const file of ['favicon.svg', 'manifest.webmanifest']) {
+    for (const file of ['favicon.svg', 'manifest.webmanifest', 'robots.txt']) {
       expect(await read(file)).toBe(await readFile(path.join('public', file), 'utf8'));
     }
   });

@@ -39,8 +39,10 @@ export interface DataSource {
 const MODEL_LABEL =
   'Modelled estimate (Copernicus CAMS via Open-Meteo), not a station measurement. Global models can under-read winter smog in South Asian cities, so check your official city monitor before relying on it.';
 
+/** Keep a correction factor within the allowed range. */
 const clamp = (value: number): number => Math.min(MAX_FACTOR, Math.max(MIN_FACTOR, value));
 
+/** Round to two decimals. */
 const round2 = (value: number): number => Math.round(value * 100) / 100;
 
 /** Latest measurement time across stations (local 'YYYY-MM-DDTHH:MM'), or ''. */
@@ -57,6 +59,7 @@ function measuredWhen(first: string, last: string): string {
   return first === last ? ` at ${last}` : ` ${first}–${last}`;
 }
 
+/** The on-screen source line: "Measured 09:30–12:00 by 3 monitoring stations via OpenAQ: …". */
 export function describeStations(provider: string, stations: readonly StationInfo[]): string {
   const names = stations.map((s) => `${s.name} (${s.distanceKm.toFixed(1)} km)`).join(', ');
   const span = timeSpan(measuredTimes(stations));
@@ -66,6 +69,7 @@ export function describeStations(provider: string, stations: readonly StationInf
 
 type Factors = Partial<Record<PollutantId, number>>;
 
+/** The labelled model-estimate source, used when no fresh station data is available. */
 const modelSource = (): DataSource => ({
   kind: 'model',
   label: MODEL_LABEL,

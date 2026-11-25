@@ -112,6 +112,7 @@ export interface Vulnerability {
   hasCardiac: boolean;
 }
 
+/** Who in the household is sensitive to pollution, and whether anyone has a lung or heart condition. */
 export function assessVulnerability(household: Household): Vulnerability {
   const groups: string[] = [];
   if (household.members.children > 0) groups.push('children');
@@ -134,6 +135,7 @@ export function formatList(items: readonly string[]): string {
   return `${items.slice(0, -1).join(', ')} and ${items[items.length - 1]}`;
 }
 
+/** Total number of people in the household. */
 export function householdSize(household: Household): number {
   const { adults, children, seniors } = household.members;
   return adults + children + seniors;

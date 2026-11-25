@@ -76,6 +76,7 @@ export const DELHI_NCR_BOUNDS = {
 
 const INDIAN_TIMEZONES = new Set(['Asia/Kolkata', 'Asia/Calcutta']);
 
+/** True inside the Delhi-NCR bounding box. */
 export function isInDelhiNcr(latitude: number, longitude: number): boolean {
   const b = DELHI_NCR_BOUNDS;
   return (
@@ -83,6 +84,7 @@ export function isInDelhiNcr(latitude: number, longitude: number): boolean {
   );
 }
 
+/** Country context for a place: country code, Delhi-NCR, grid carbon intensity and emergency number. */
 export function resolveRegion(location: GeoLocation, timezone?: string): Region {
   const fromTimezone = timezone && INDIAN_TIMEZONES.has(timezone) ? 'IN' : null;
   const countryCode = location.countryCode?.toUpperCase() ?? fromTimezone;

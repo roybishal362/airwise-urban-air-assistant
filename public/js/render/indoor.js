@@ -29,13 +29,12 @@ function vizRow({ label, value, note = '', clean = false }, max) {
 }
 
 /**
- * Before/after visual from the indoor mass-balance model plus prioritised hacks.
- * @param {Brief} brief
+ * Before/after bars: outdoors, indoors with no filter, and each filtration option.
+ * @param {Brief['indoor']} indoor
  */
-export function renderIndoor(brief) {
-  const { indoor } = brief;
+function indoorViz(indoor) {
   const max = indoor.outdoorPm25;
-  const viz = el(
+  return el(
     'ul',
     {
       className: 'viz',
@@ -55,25 +54,35 @@ export function renderIndoor(brief) {
       ),
     ),
   );
+}
+
+/**
+ * One indoor hack with its priority, advice and estimated effect.
+ * @param {Brief['indoor']['hacks'][number]} h
+ */
+function hackItem(h) {
+  return el(
+    'li',
+    { className: `hack p${h.priority}` },
+    el('span', { className: 'priority', text: PRIORITY_LABEL[h.priority] }),
+    el('h3', { text: h.title }),
+    el('p', { text: h.detail }),
+    el('p', { className: 'why' }, el('strong', { text: 'Impact: ' }), h.impact),
+  );
+}
+
+/**
+ * Before/after visual from the indoor mass-balance model plus prioritised hacks.
+ * @param {Brief} brief
+ */
+export function renderIndoor(brief) {
+  const { indoor } = brief;
   return [
     el('p', {
       className: 'hint',
       text: `Estimated PM2.5 in your ${indoor.roomVolumeM3} m³ room with windows shut`,
     }),
-    viz,
-    el(
-      'ul',
-      { className: 'hacks' },
-      indoor.hacks.map((h) =>
-        el(
-          'li',
-          { className: `hack p${h.priority}` },
-          el('span', { className: 'priority', text: PRIORITY_LABEL[h.priority] }),
-          el('h3', { text: h.title }),
-          el('p', { text: h.detail }),
-          el('p', { className: 'why' }, el('strong', { text: 'Impact: ' }), h.impact),
-        ),
-      ),
-    ),
+    indoorViz(indoor),
+    el('ul', { className: 'hacks' }, indoor.hacks.map(hackItem)),
   ];
 }

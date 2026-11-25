@@ -8,7 +8,7 @@ import { gzipSync } from 'node:zlib';
  * Production build of the browser app. Development serves the readable,
  * unbundled ES modules in public/; production gets:
  *
- *  - one minified JS bundle instead of 26 modules (26 requests → 1),
+ *  - one minified JS bundle instead of 28 modules (28 requests → 1),
  *  - minified CSS,
  *  - content-hashed file names under /assets/, so they can be cached for a
  *    year ("immutable") and a deploy can never mix old and new files,
@@ -86,6 +86,7 @@ async function measure(files: readonly string[]): Promise<WebBuildResult['sizes'
   return sizes;
 }
 
+/** Build the production UI into `outDir`: bundle, copy static files, rewrite the HTML, report sizes. */
 export async function buildWeb({
   srcDir = 'public',
   outDir = path.join('dist', 'web'),

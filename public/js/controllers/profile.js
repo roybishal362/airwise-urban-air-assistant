@@ -69,11 +69,21 @@ function setupSteppers(form) {
 }
 
 /**
+ * Set the form's "households acting together" field.
+ * @param {HTMLFormElement} form @param {number} households
+ */
+function setHouseholdsField(form, households) {
+  const field = form.elements.namedItem('communityHouseholds');
+  if (field instanceof HTMLInputElement) field.value = String(households);
+}
+
+/**
  * Visual household editor (its own "Family" tab) plus the summary pills
  * shown on the "Today" tab.
  * @param {ProfileOptions} options
  */
 export function setupProfile({ ui, storage, getProfile, setProfile, onSaved }) {
+  /** Show the saved household as short chips ("2 adults", "Metro · 12 km"). */
   function renderSummary() {
     replaceChildren(
       ui.summary,
@@ -81,6 +91,7 @@ export function setupProfile({ ui, storage, getProfile, setProfile, onSaved }) {
     );
   }
 
+  /** Validate the form; mark the first invalid field, or save the profile and report back. */
   function submit() {
     clearFieldErrors(ui.form);
     let profile;
@@ -100,6 +111,15 @@ export function setupProfile({ ui, storage, getProfile, setProfile, onSaved }) {
     onSaved();
   }
 
+  /**
+   * The impact tab's slider changed the household count: mirror it in the form (and only
+   * that field, so unsaved edits elsewhere survive), so saving the family keeps it.
+   */
+  function syncHouseholds() {
+    setHouseholdsField(ui.form, getProfile().household.communityHouseholds);
+    renderSummary();
+  }
+
   setupSteppers(ui.form);
   ui.form.addEventListener('submit', (event) => {
     event.preventDefault();
@@ -108,5 +128,5 @@ export function setupProfile({ ui, storage, getProfile, setProfile, onSaved }) {
 
   writeProfile(ui.form, getProfile());
   renderSummary();
-  return { renderSummary };
+  return { renderSummary, syncHouseholds };
 }

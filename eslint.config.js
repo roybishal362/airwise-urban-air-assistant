@@ -1,4 +1,5 @@
 import js from '@eslint/js';
+import jsdoc from 'eslint-plugin-jsdoc';
 import sonarjs from 'eslint-plugin-sonarjs';
 import globals from 'globals';
 import tseslint from 'typescript-eslint';
@@ -12,7 +13,19 @@ const qualityLimits = {
   'max-depth': ['error', 3],
   'max-params': ['error', 4],
   'max-nested-callbacks': ['error', 3],
-  'max-lines-per-function': ['error', { max: 60, skipBlankLines: true, skipComments: true }],
+  'max-lines-per-function': ['error', { max: 40, skipBlankLines: true, skipComments: true }],
+  'max-lines': ['error', { max: 200, skipBlankLines: true, skipComments: true }],
+  // Every function, class and module-level arrow function says what it does.
+  'jsdoc/require-jsdoc': [
+    'error',
+    {
+      require: { FunctionDeclaration: true, ClassDeclaration: true, MethodDefinition: true },
+      contexts: [
+        'Program > VariableDeclaration > VariableDeclarator > ArrowFunctionExpression',
+        'ExportNamedDeclaration > VariableDeclaration > VariableDeclarator > ArrowFunctionExpression',
+      ],
+    },
+  ],
 };
 
 /** Type-aware rules (strictTypeChecked) for the TypeScript that ships. */
@@ -51,6 +64,7 @@ export default tseslint.config(
   },
   {
     files: ['src/**/*.ts', 'scripts/**/*.ts', 'public/js/**/*.js'],
+    plugins: { jsdoc },
     rules: qualityLimits,
   },
   {

@@ -8,10 +8,12 @@ import type { LocalTime } from './types.js';
 
 const LOCAL_TIME = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/;
 
+/** True for a `YYYY-MM-DDTHH:mm` local time. */
 export function isLocalTime(value: string): boolean {
   return LOCAL_TIME.test(value);
 }
 
+/** The hour (0–23) of a local time. */
 export function hourOf(time: LocalTime): number {
   return Number(time.slice(11, 13));
 }
@@ -21,6 +23,7 @@ export function hourKey(time: LocalTime): string {
   return time.slice(0, 13);
 }
 
+/** A local time shifted by whole hours, rolling over days correctly. */
 export function addHours(time: LocalTime, hours: number): LocalTime {
   const match = LOCAL_TIME.exec(time);
   if (!match) throw new Error(`Invalid local time: ${time}`);

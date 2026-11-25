@@ -5,10 +5,10 @@ how many families use it.
 
 ## Front end: three files, cached for a year
 
-- **No framework.** The UI is 26 small ES modules in development. `npm run build`
+- **No framework.** The UI is 28 small ES modules in development. `npm run build`
   ([`scripts/build-web.ts`](scripts/build-web.ts), esbuild) turns them into **one minified JS bundle and one minified
   CSS file with content-hashed names**, and rewrites the HTML to use them.
-- **Size** (`npm run build` prints it): HTML 7.6 KB, JS 13.6 KB, CSS 5.9 KB gzipped, **27.1 KB in total**. A test
+- **Size** (`npm run build` prints it): HTML 7.6 KB, JS 13.8 KB, CSS 5.9 KB gzipped, **27.3 KB in total**. A test
   fails the build above 32 KB ([`tests/unit/build-web.test.ts`](tests/unit/build-web.test.ts)).
 - **Caching:** hashed `/assets/` files are served `immutable` for a year (a deploy changes their names), only the HTML
   is revalidated, icons and the manifest are cached for a day ([`vercel.json`](vercel.json), mirrored by Express and

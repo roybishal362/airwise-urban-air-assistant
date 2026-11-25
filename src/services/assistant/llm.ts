@@ -12,6 +12,7 @@ export interface LlmProvider {
   generate(system: string, turns: readonly ChatTurn[]): Promise<string>;
 }
 
+/** The model could not answer (error, timeout, refusal or empty reply); callers fall back to rule-based answers. */
 export class LlmUnavailableError extends Error {
   override readonly name = 'LlmUnavailableError';
 }
@@ -19,6 +20,7 @@ export class LlmUnavailableError extends Error {
 /** Hard cap on what we pass back to the browser, whatever the model returns. */
 export const MAX_REPLY_CHARS = 3000;
 
+/** Trim and cap a model reply; an empty reply counts as unavailable. */
 const finalise = (text: string | undefined | null): string => {
   const trimmed = (text ?? '').trim();
   if (!trimmed) throw new LlmUnavailableError('Empty model response');
@@ -61,6 +63,7 @@ export function parseModelChain(value: string): string[] {
     .filter((m) => m.length > 0);
 }
 
+/** Gemini provider that tries each model in order, each call bounded by the timeout. */
 export function createGeminiProvider(options: {
   apiKey: string;
   /** Ordered fallback chain, fastest/cheapest first. */
@@ -111,6 +114,7 @@ export interface ClaudeMessagesApi {
   create(params: ClaudeParams): Promise<ClaudeMessage>;
 }
 
+/** Claude provider bounded by the timeout; a refusal counts as unavailable. */
 export function createClaudeProvider(options: {
   apiKey: string;
   model: string;

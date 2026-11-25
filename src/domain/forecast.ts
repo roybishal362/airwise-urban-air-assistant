@@ -29,6 +29,7 @@ export interface WindowOptions {
   latestHour?: number;
 }
 
+/** Highest severity level among the hours. */
 const maxLevel = (points: readonly HourlyIndex[]): SeverityLevel =>
   points.reduce<SeverityLevel>((acc, p) => (p.level > acc ? p.level : acc), 0);
 
@@ -56,6 +57,7 @@ interface Scored {
   average: number;
 }
 
+/** Mean AQI of a run of hours. */
 const averageAqi = (slice: readonly HourlyIndex[]): number =>
   slice.reduce((sum, p) => sum + p.aqi, 0) / slice.length;
 
@@ -77,6 +79,7 @@ function bestSlice(
   return best;
 }
 
+/** The window a run of hours covers (exclusive end), with average and peak AQI; null for an empty run. */
 function toTimeWindow(slice: readonly HourlyIndex[], average: number): TimeWindow | null {
   const first = slice[0];
   const last = slice.at(-1);
@@ -106,6 +109,7 @@ function trendDirection(change: number): Trend['direction'] {
   return change >= 0.1 ? 'worsening' : 'stable';
 }
 
+/** Whether the air is improving, worsening or stable over the next hours; null without enough data. */
 export function describeTrend(points: readonly HourlyIndex[], lookaheadHours = 6): Trend | null {
   const current = points[0];
   const upcoming = points.slice(1, 1 + lookaheadHours);

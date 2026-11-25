@@ -43,55 +43,55 @@ export interface BriefServiceOptions {
 export const cacheKey = (latitude: number, longitude: number): string =>
   `${latitude.toFixed(2)},${longitude.toFixed(2)}`;
 
+/** One cache per upstream, each with its own freshness. */
+function createCaches(options: BriefServiceOptions) {
+  const maxEntries = options.maxEntries ?? 500;
+  const airTtlMs = options.airTtlMs ?? 10 * 60_000;
+  return {
+    air: new TtlCache<AirSnapshot>(airTtlMs, maxEntries),
+    weather: new TtlCache<WeatherSnapshot>(options.weatherTtlMs ?? 30 * 60_000, maxEntries),
+    station: new TtlCache<StationSnapshot | null>(airTtlMs, maxEntries),
+    places: new TtlCache<GeoLocation[]>(options.placesTtlMs ?? 24 * 60 * 60_000, maxEntries),
+  };
+}
+
+/**
+ * The value of an optional upstream, or null when it failed. Weather only powers the smog
+ * outlook and stations only refine "now", so the brief degrades gracefully to the labelled
+ * model estimate without them.
+ */
+function optional<T>(result: PromiseSettledResult<T>, name: string, logger: Logger): T | null {
+  if (result.status === 'fulfilled') return result.value;
+  logger.warn(`${name} unavailable, continuing without it`, {
+    error: result.reason instanceof Error ? result.reason.message : 'unknown',
+    // e.g. "openaq: HTTP 401" reveals a bad key without logging the key itself
+    detail: result.reason instanceof AppError ? result.reason.detail : undefined,
+  });
+  return null;
+}
+
+/** Turns a place and household into a brief, with per-area caching and graceful fallbacks. */
 export function createBriefService(options: BriefServiceOptions): BriefService {
-  const { client, logger, maxEntries = 500 } = options;
-  const airCache = new TtlCache<AirSnapshot>(options.airTtlMs ?? 10 * 60_000, maxEntries);
-  const weatherCache = new TtlCache<WeatherSnapshot>(
-    options.weatherTtlMs ?? 30 * 60_000,
-    maxEntries,
-  );
-  const stationCache = new TtlCache<StationSnapshot | null>(
-    options.airTtlMs ?? 10 * 60_000,
-    maxEntries,
-  );
-  const placesCache = new TtlCache<GeoLocation[]>(
-    options.placesTtlMs ?? 24 * 60 * 60_000,
-    maxEntries,
-  );
+  const { client, logger, stations } = options;
+  const caches = createCaches(options);
 
   return {
     async getBrief({ location, household, standard }) {
-      const key = cacheKey(location.latitude, location.longitude);
-      const stations = options.stations;
+      const { latitude, longitude } = location;
+      const key = cacheKey(latitude, longitude);
       const [air, weather, station] = await Promise.allSettled([
-        airCache.getOrLoad(key, () => client.getAirQuality(location.latitude, location.longitude)),
-        weatherCache.getOrLoad(key, () => client.getWeather(location.latitude, location.longitude)),
+        caches.air.getOrLoad(key, () => client.getAirQuality(latitude, longitude)),
+        caches.weather.getOrLoad(key, () => client.getWeather(latitude, longitude)),
         stations
-          ? stationCache.getOrLoad(key, () =>
-              stations.latest(location.latitude, location.longitude),
-            )
+          ? caches.station.getOrLoad(key, () => stations.latest(latitude, longitude))
           : Promise.resolve(null),
       ]);
       if (air.status === 'rejected') throw air.reason;
-      for (const [name, result] of [
-        ['weather', weather],
-        ['stations', station],
-      ] as const) {
-        if (result.status === 'rejected') {
-          // Weather only powers the smog outlook and stations only refine "now":
-          // degrade gracefully to the labelled model estimate without them.
-          logger.warn(`${name} unavailable, continuing without it`, {
-            error: result.reason instanceof Error ? result.reason.message : 'unknown',
-            // e.g. "openaq: HTTP 401" reveals a bad key without logging the key itself
-            detail: result.reason instanceof AppError ? result.reason.detail : undefined,
-          });
-        }
-      }
       return buildBrief({
         location,
         air: air.value,
-        weather: weather.status === 'fulfilled' ? weather.value : null,
-        station: station.status === 'fulfilled' ? station.value : null,
+        weather: optional(weather, 'weather', logger),
+        station: optional(station, 'stations', logger),
         household,
         standard,
       });
@@ -99,7 +99,7 @@ export function createBriefService(options: BriefServiceOptions): BriefService {
 
     searchPlaces(query) {
       const normalised = query.trim().toLowerCase();
-      return placesCache.getOrLoad(normalised, () => client.searchPlaces(normalised));
+      return caches.places.getOrLoad(normalised, () => client.searchPlaces(normalised));
     },
   };
 }

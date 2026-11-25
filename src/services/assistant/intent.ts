@@ -1,3 +1,5 @@
+import { KEYWORDS } from './intentKeywords.js';
+
 /**
  * Lightweight, deterministic intent detection. It powers the offline
  * rule-based assistant and the follow-up suggestions, and works for English
@@ -18,166 +20,6 @@ export const INTENTS = [
 ] as const;
 export type Intent = (typeof INTENTS)[number];
 
-/**
- * Keywords per intent, checked in order: safety-related intents first, the
- * generic status last. A trailing `*` matches any word ending
- * ("cough*" → cough, coughing); multi-word phrases match as written.
- */
-const KEYWORDS: readonly (readonly [Intent, readonly string[]])[] = [
-  [
-    'health',
-    [
-      'cough*',
-      'wheez*',
-      'asthma',
-      'breath*',
-      'chest',
-      'symptom*',
-      'headache',
-      'throat',
-      'eye burn*',
-      'eyes burn*',
-      'eye itch*',
-      'eyes itch*',
-      'eye water*',
-      'eyes water*',
-      'pregnan*',
-      'copd',
-      'heart',
-      'inhaler',
-      'doctor',
-      'hospital',
-      'sick',
-      'dizzy',
-      'khansi',
-      'saans',
-    ],
-  ],
-  ['mask', ['mask', 'masks', 'n95', 'kn95', 'ffp2', 'respirator']],
-  [
-    'indoor',
-    [
-      'indoor',
-      'indoors',
-      'inside',
-      'home',
-      'house',
-      'room',
-      'rooms',
-      'window',
-      'windows',
-      'khidki',
-      'purifier',
-      'purifiers',
-      'ventilat*',
-      'filter',
-      'filters',
-      'plant',
-      'plants',
-      'cook*',
-      'kitchen',
-      'incense',
-      'agarbatti',
-      'heater',
-      'angithi',
-      'ac',
-    ],
-  ],
-  [
-    'commute',
-    [
-      'commut*',
-      'office',
-      'metro',
-      'bus',
-      'car',
-      'bike',
-      'scooter',
-      'drive',
-      'driving',
-      'auto',
-      'carpool*',
-      'travel*',
-    ],
-  ],
-  [
-    'community',
-    [
-      'community',
-      'neighbor',
-      'neighbors',
-      'neighbour',
-      'neighbours',
-      'society',
-      'rwa',
-      'colony',
-      'street',
-      'together',
-      'campaign',
-    ],
-  ],
-  [
-    'emissions',
-    [
-      'emission',
-      'emissions',
-      'carbon',
-      'co2',
-      'footprint',
-      'sustainab*',
-      'eco',
-      'green',
-      'climate',
-      'reduce pollution',
-      'my impact',
-      'difference',
-    ],
-  ],
-  ['best_time', ['when', 'what time', 'best time', 'which hour', 'schedule', 'timing']],
-  [
-    'outdoor',
-    [
-      'run*',
-      'jog*',
-      'walk*',
-      'exercis*',
-      'workout',
-      'play*',
-      'park',
-      'outside',
-      'outdoor',
-      'outdoors',
-      'cycl*',
-      'yoga',
-      'sport',
-      'sports',
-      'cricket',
-      'football',
-      'bacch*',
-      'kid',
-      'kids',
-      'children',
-    ],
-  ],
-  [
-    'smog',
-    [
-      'smog',
-      'fog',
-      'inversion',
-      'why',
-      'tomorrow',
-      'tonight',
-      'forecast',
-      'later',
-      'wind',
-      'stubble',
-      'parali',
-      'dhuan',
-    ],
-  ],
-];
-
 /** One keyword as a regex fragment: the text is literal; a trailing `*` matches any word ending. */
 function keywordSource(keyword: string): string {
   const wildcard = keyword.endsWith('*');
@@ -196,6 +38,7 @@ const RULES: readonly (readonly [Intent, RegExp])[] = KEYWORDS.map(
 
 const GREETING = /^\s*(hi|hello|hey|namaste|namaskar|help|start|what can you do)\b[\s!.?]*$/i;
 
+/** The intent of a message: a greeting, else the first matching keyword rule, else "status". */
 export function detectIntent(message: string): Intent {
   if (GREETING.test(message)) return 'greeting';
   for (const [intent, pattern] of RULES) {

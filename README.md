@@ -20,8 +20,8 @@ and how the GenAI is grounded in measured data)
 | --------------------------- | -------------------------------------------- | --------------------------------------------------------------------- |
 | Code quality                | [CODE_QUALITY.md](CODE_QUALITY.md)           | `npm run lint` (typed ESLint + SonarJS + limits), `npm run typecheck` |
 | Security                    | [SECURITY.md](SECURITY.md)                   | integration tests, CodeQL, `npm audit` (0 vulnerabilities)            |
-| Efficiency                  | [EFFICIENCY.md](EFFICIENCY.md)               | `npm run build` (27.1 KB gzipped UI), cache tests                     |
-| Testing                     | [TESTING.md](TESTING.md)                     | `npm run test:coverage` (409 tests, 100 % lines)                      |
+| Efficiency                  | [EFFICIENCY.md](EFFICIENCY.md)               | `npm run build` (27.3 KB gzipped UI), cache tests                     |
+| Testing                     | [TESTING.md](TESTING.md)                     | `npm run test:coverage` (410 tests, 100 % lines)                      |
 | Accessibility               | [ACCESSIBILITY.md](ACCESSIBILITY.md)         | axe-core (0 violations) and contrast tests                            |
 | Problem statement alignment | [PROBLEM_ALIGNMENT.md](PROBLEM_ALIGNMENT.md) | every requirement mapped to code and tests                            |
 
@@ -320,10 +320,10 @@ See [`SECURITY.md`](SECURITY.md) for the full threat model. Highlights:
 
 ### Efficiency
 
-- **No front-end framework; a tiny production build.** Development serves 26 readable ES modules.
+- **No front-end framework; a tiny production build.** Development serves 28 readable ES modules.
   `npm run build` runs [`scripts/build-web.ts`](scripts/build-web.ts) (esbuild): one minified JS bundle and one
   minified CSS file with content-hashed names, and the HTML rewritten to use them. The whole UI is **3 files,
-  27.1 KB gzipped** (HTML 7.6, JS 13.6, CSS 5.9).
+  27.3 KB gzipped** (HTML 7.6, JS 13.8, CSS 5.9).
 - **Cache once, then never again:** hashed `/assets/` files are cached for a year (`immutable`), since a deploy changes
   their names; only the HTML is revalidated. Icons and the manifest are cached for a day.
 - **Measured on the live site** (Chrome, India → Mumbai, 24 Nov 2026):
@@ -347,7 +347,7 @@ See [`SECURITY.md`](SECURITY.md) for the full threat model. Highlights:
   reasoning effort and capped output.
 - **Linear algorithms** (n ≤ 48 hours) and no database.
 
-### Testing: 409 automated tests (Vitest + fast-check + axe-core)
+### Testing: 410 automated tests (Vitest + fast-check + axe-core)
 
 | Suite                                                                                                          | What it proves                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | -------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -356,7 +356,7 @@ See [`SECURITY.md`](SECURITY.md) for the full threat model. Highlights:
 | `tests/unit/forecast.test.ts`, `smog.test.ts`                                                                  | Window search (ties, midnight, constraints), day labels, trends, ventilation coefficient, trap-risk grading, fog, missing data                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | `tests/unit/household-risk.test.ts`, `indoor-impact.test.ts`, `brief-routine.test.ts`, `region-policy.test.ts` | Every decision branch, mass-balance maths, impact factors, health-first ranking, grid-aware EV/metro CO₂, India-only schemes, GRAP stages and personal implications, community totals, the full brief on **real captured Delhi data**                                                                                                                                                                                                                                                                                                                                                           |
 | `tests/unit/stations.test.ts`                                                                                  | OpenAQ client with a fake fetch: nearest fresh reference stations only (stale, low-cost and PM-less stations filtered), ppb/ppm/mg-to-µg conversion, averaging, parallel reads with one failing station skipped, HTTP/network/schema errors; calibration (measured "now", per-pollutant forecast scaling, clamping, honest model label); the brief turning **Severe** with real Delhi-level PM2.5; service caching and fallback                                                                                                                                                                 |
-| `tests/unit/build-web.test.ts`                                                                                 | The production build: 26 modules become one hashed, fully bundled, minified JS file plus hashed CSS; the HTML points at them with no leftover preloads and no inline code (CSP-clean); under 32 KB gzipped; a year-long `immutable` cache only for hashed files; production serves the build, development the sources                                                                                                                                                                                                                                                                           |
+| `tests/unit/build-web.test.ts`                                                                                 | The production build: 28 modules become one hashed, fully bundled, minified JS file plus hashed CSS; the HTML points at them with no leftover preloads and no inline code (CSP-clean); under 32 KB gzipped; a year-long `immutable` cache only for hashed files; production serves the build, development the sources                                                                                                                                                                                                                                                                           |
 | `tests/unit/infrastructure.test.ts`                                                                            | Cache TTL, LRU and coalescing, retry policy, upstream schema validation, config validation, logging                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
 | `tests/unit/assistant.test.ts`, `edge-cases.test.ts`                                                           | Intent detection (incl. Hinglish), prompt sanitisation and grounding, unit-explicit quantities, Gemini model-chain fallthrough, Claude refusals, rule-based answers for every intent, graceful fallback without logging user content                                                                                                                                                                                                                                                                                                                                                            |
 | `tests/integration/api.test.ts`, `guards-server.test.ts`, `vercel.test.ts`                                     | Real Express app: security headers, validation, 400/403/404/413/415/429/500/502 mapping, cross-site guard, request IDs, no internal leaks, caching and 304s, compression, production bootstrap on a free port; `vercel.test.ts` keeps the CDN's headers identical to the app's and checks the API rewrite, Mumbai region, upload allow-list and the serverless entry                                                                                                                                                                                                                            |
@@ -405,8 +405,8 @@ The design targets WCAG 2.2 AA:
   complexity, ReDoS-prone regexes) on all code including tests; Prettier; and a CI pipeline: lint → format →
   typecheck → tests with coverage thresholds → build → audit. Details in [CODE_QUALITY.md](CODE_QUALITY.md).
 - **Enforced size and complexity limits** on every shipped file, server and browser alike (CI fails on any breach):
-  cyclomatic complexity ≤ 10, ≤ 60 lines per function, nesting depth ≤ 3, ≤ 4 parameters (option objects beyond
-  that). Long functions are split into small named steps (for example `startApp` is a short composition root over
+  cyclomatic complexity ≤ 10, ≤ 40 lines per function, ≤ 200 lines of code per file, nesting depth ≤ 3, ≤ 4
+  parameters (option objects beyond that), and a doc comment on every function. Long functions are split into small named steps (for example `startApp` is a short composition root over
   `createShell`, `createPlanLoader`, `setupFamily` and `setupAssistant`), and rule sets are declarative tables
   (GRAP implications, CPCB breakpoints, form-field ranges).
 - **No copy-paste:** 0 % duplication by jscpd across `src/`, `scripts/` and `public/js/`, even at a strict 30-token
@@ -415,7 +415,7 @@ The design targets WCAG 2.2 AA:
   browser app is also dependency-injected (`startApp({ api, storage, geolocation, … })`) so it is fully testable.
 - **The browser code is type-checked against the server's own domain types** (`AirBrief`), so the API contract and UI
   cannot drift silently. No `any` in the front end.
-- Small, cohesive modules (no TypeScript or JavaScript file exceeds 310 lines except the AQI breakpoint data table) and a written
+- Small, cohesive modules (at most 200 lines of code per file, enforced) and a written
   [decisions log](docs/DECISIONS.md).
 
 ## 8. Run it locally
@@ -472,9 +472,9 @@ under **Settings → Environment Variables**, and deploy. `vercel.json` sets eve
 ```
 src/
   domain/              pure, I/O-free decision logic (fully unit-tested)
-    aqi/               breakpoint tables (data) + calculator
-    impact/            factors (data), commute comparison, household + community actions
-    brief.ts           assembles the AirBrief from every engine
+    aqi/               one data module per standard (usEpa.ts, indiaNaqi.ts) + calculator
+    impact/            factors (data), commute comparison, commute/home/community actions
+    brief.ts           assembles the AirBrief from every engine (types, summary and hours-ahead helpers alongside)
     calibration.ts     measured "now" + forecast rescaled to the stations, with a source label
     forecast.ts        hourly index, best/worst windows, trend
     smog.ts            ventilation coefficient and smog-trap risk
@@ -482,13 +482,13 @@ src/
     policy.ts          Delhi-NCR GRAP stages and what they mean for a household
     household.ts       profile schema and vulnerability
     risk.ts            family risk and per-member advice
-    indoor.ts          mass-balance model and indoor hacks
-    routine.ts         time-ordered daily routine
+    indoor*.ts         mass-balance model, indoor hacks, and the plan that combines them
+    routine*.ts        time-ordered daily routine and one builder per step
     glance.ts          five one-line decisions + cigarette / WHO-limit equivalents
     time.ts            local-time helpers and day labels
   services/
     openMeteo.ts       upstream client (fixed hosts, schema-validated)
-    openaq.ts          nearest official monitoring stations: filter, parallel reads, unit conversion
+    openaq*.ts         nearest official monitoring stations: filter, parallel reads; schemas and unit fixes
     cache.ts           TTL + LRU cache with request coalescing
     briefService.ts    orchestration with caching and graceful degradation
     assistant/         intent detection, grounded prompt, Gemini/Claude providers, rule-based answers
@@ -502,6 +502,7 @@ public/
   index.html, css/     accessible markup and styles (no inline code)
   js/app.js            composition root (dependency-injected); js/main.js is the 2-line entry
   js/shell.js          page frame: status line, landing ↔ app view, page title, location bar
+  js/environment.js    injectable browser capabilities; js/features.js wires family, assistant, search, share
   js/controllers/      tabs (ARIA, deep links), search + location fallback, family editor, impact, share/speech, voice
   js/render/           one module per section: AQI dial, glance tiles, family, SVG chart, routine, indoor, impact
   js/community.js      instant client-side community scaling and pledge totals

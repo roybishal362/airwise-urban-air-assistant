@@ -3,6 +3,7 @@ import type { Request, RequestHandler } from 'express';
 
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 
+/** Send a JSON error with a stable code and a user-facing message. */
 const reject = (
   res: Parameters<RequestHandler>[1],
   status: number,

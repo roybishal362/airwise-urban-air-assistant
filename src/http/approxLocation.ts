@@ -14,6 +14,7 @@ import { locationSchema } from './schemas.js';
  */
 export type ApproximatePlace = z.infer<typeof locationSchema>;
 
+/** A trimmed, non-empty header value, or undefined. */
 const header = (headers: IncomingHttpHeaders, name: string): string | undefined => {
   const value = headers[name];
   return typeof value === 'string' && value.trim() ? value.trim() : undefined;
@@ -32,6 +33,7 @@ const decodeCity = (raw: string | undefined): string | undefined => {
 /** ~1 km: city-level is all an IP address can honestly tell us. */
 const round2 = (value: number): number => Math.round(value * 100) / 100;
 
+/** City-level place from Vercel's IP-geolocation headers, validated like user input; null without coordinates. */
 export function approximatePlace(headers: IncomingHttpHeaders): ApproximatePlace | null {
   const latitude = Number(header(headers, 'x-vercel-ip-latitude'));
   const longitude = Number(header(headers, 'x-vercel-ip-longitude'));

@@ -10,6 +10,7 @@
  * @typedef {{ error?: { message?: string, code?: string } }} ErrorBody
  */
 
+/** An API failure: a message safe to show the user, plus the HTTP status and error code. */
 export class ApiError extends Error {
   /**
    * @param {string} message
@@ -32,6 +33,12 @@ const jsonHeaders = (init) => ({
   accept: 'application/json',
   ...(init.body ? { 'content-type': 'application/json' } : {}),
 });
+
+/**
+ * A message to show the user for any error: an ApiError's own message, otherwise a generic one.
+ * @param {unknown} error
+ */
+export const errorMessage = (error) => (error instanceof ApiError ? error.message : GENERIC_ERROR);
 
 /**
  * fetch, with a failure to connect (offline, DNS, timeout) as a friendly ApiError.

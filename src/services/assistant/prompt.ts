@@ -48,9 +48,11 @@ export function sanitizeUserText(text: string, maxChars = MAX_MESSAGE_CHARS): st
     .slice(0, maxChars);
 }
 
+/** A time window as compact prompt text, or null. */
 const windowText = (w: TimeWindow | null, now: string): string | null =>
   w ? `${windowLabel(w.start, w.end, now)} avg AQI ${w.averageAqi}, peak ${w.peakAqi}` : null;
 
+/** The household facts the model needs; the profile holds no names or contact details. */
 function householdFacts(h: Household): Record<string, unknown> {
   return {
     members: h.members,

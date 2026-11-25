@@ -208,6 +208,18 @@ describe('impact controls', () => {
     expect($('family-summary').textContent).toMatch(/200 households together/);
   });
 
+  it('keeps the slider’s household count when the family is saved later', async () => {
+    const { app, storage } = bootWithPlan();
+    await app.ready;
+    const range = $<HTMLInputElement>('community-range');
+    range.value = '150';
+    range.dispatchEvent(new Event('change', { bubbles: true }));
+    $<HTMLFormElement>('profile-form').requestSubmit();
+    expect(
+      JSON.parse(storage.getItem('airwise.profile.v1') ?? '{}').household.communityHouseholds,
+    ).toBe(150);
+  });
+
   it('toggles pledges, keeps focus and remembers them', async () => {
     const storage = new MemoryStorage();
     const { app } = bootWithPlan(storage);

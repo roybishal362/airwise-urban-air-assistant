@@ -38,6 +38,7 @@ export interface SmogOutlook {
   explanation: string[];
 }
 
+/** Ventilation coefficient (m²/s) = mixing height × wind speed; null when either is missing or negative. */
 export function ventilationCoefficient(
   mixingHeightM: number | null,
   windKmh: number | null,
@@ -47,18 +48,21 @@ export function ventilationCoefficient(
   return Math.round(mixingHeightM * (windKmh / 3.6));
 }
 
+/** Poor, moderate or good dispersion for a ventilation coefficient. */
 export function classifyDispersion(vc: number): Dispersion {
   if (vc < POOR_VENTILATION_M2S) return 'poor';
   if (vc < GOOD_VENTILATION_M2S) return 'moderate';
   return 'good';
 }
 
+/** True when an hour's air barely mixes (low ventilation, or calm wind when that is unknown). */
 function isStagnant(hour: HourlyWeather): boolean {
   const vc = ventilationCoefficient(hour.boundaryLayerM, hour.windKmh);
   if (vc !== null) return vc < POOR_VENTILATION_M2S;
   return hour.windKmh !== null && hour.windKmh < CALM_WIND_KMH;
 }
 
+/** Smog-trap risk from the share of stagnant hours ahead. */
 function trapRiskFromShare(share: number): TrapRisk {
   if (share >= 0.75) return 'severe';
   if (share >= 0.5) return 'high';

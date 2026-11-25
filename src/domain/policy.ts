@@ -58,6 +58,7 @@ const STAGE_MEASURES: Readonly<Record<Exclude<GrapStage, 0>, readonly string[]>>
   ],
 };
 
+/** Delhi-NCR GRAP stage (0–4) for a CPCB NAQI value. */
 export function grapStageFor(naqi: number): GrapStage {
   if (naqi > 450) return 4;
   if (naqi > 400) return 3;
@@ -67,6 +68,7 @@ export function grapStageFor(naqi: number): GrapStage {
 }
 
 const FUEL_CARS: ReadonlySet<string> = new Set(['car_petrol', 'car_diesel']);
+/** True when the household commutes by petrol or diesel car. */
 const drivesFuelCar = (h: Household): boolean => FUEL_CARS.has(h.lifestyle.commuteMode);
 
 /** What each GRAP stage means for a household, from the stage at which it starts to apply. */
@@ -102,6 +104,7 @@ const IMPLICATIONS: readonly {
   },
 ];
 
+/** The GRAP rules that affect this household at this stage, in plain words. */
 function personalImplications(stage: Exclude<GrapStage, 0>, household: Household): string[] {
   return IMPLICATIONS.filter((rule) => stage >= rule.fromStage && rule.appliesTo(household)).map(
     (rule) => rule.text,

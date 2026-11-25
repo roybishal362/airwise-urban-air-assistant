@@ -65,6 +65,7 @@ export function subIndexFromScale(concentration: number, scale: PollutantScale):
   return Math.round(index);
 }
 
+/** Sub-index of one pollutant under a standard, from µg/m³; null when the value is missing or invalid. */
 export function subIndex(
   microgramsPerM3: number | null | undefined,
   pollutant: PollutantId,
@@ -76,6 +77,7 @@ export function subIndex(
   return subIndexFromScale(convertFromMicrograms(microgramsPerM3, scale.unit, pollutant), scale);
 }
 
+/** The category (label, colours, meaning) an index falls into; values past the top band get the top category. */
 export function categoryFor(value: number, standardId: StandardId): AqiCategory {
   const { categories } = STANDARDS[standardId];
   const match = categories.find((c) => value <= c.max) ?? categories[categories.length - 1];

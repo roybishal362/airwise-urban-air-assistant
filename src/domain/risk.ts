@@ -41,6 +41,7 @@ function headlineFor(verdict: Verdict, airLevel: SeverityLevel, groups: readonly
   }
 }
 
+/** The family verdict for a severity level, from "normal" to "stay indoors". */
 export function verdictFor(level: SeverityLevel): Verdict {
   if (level <= 1) return 'normal';
   if (level === 2) return 'take_care';
@@ -48,6 +49,7 @@ export function verdictFor(level: SeverityLevel): Verdict {
   return 'stay_indoors';
 }
 
+/** Keep a severity level within 0–5. */
 const clampLevel = (n: number): SeverityLevel => Math.max(0, Math.min(5, n)) as SeverityLevel;
 
 const CONDITION_ADVICE: Readonly<Record<Household['conditions'][number], string>> = {
@@ -64,6 +66,7 @@ const CONDITION_ADVICE: Readonly<Record<Household['conditions'][number], string>
     'Pollution can worsen allergy symptoms: keep windows closed during peaks and rinse eyes and nose after being outside.',
 };
 
+/** Outdoor advice for adults at this air level. */
 function adviceForAdults(airLevel: SeverityLevel): string {
   if (airLevel <= 1) return 'No restrictions. Ideal day for a walk or cycling.';
   if (airLevel === 2)
@@ -73,6 +76,7 @@ function adviceForAdults(airLevel: SeverityLevel): string {
   return 'Avoid outdoor exercise; wear a well-fitted N95 whenever outside.';
 }
 
+/** Outdoor advice for children at this air level. */
 function adviceForChildren(airLevel: SeverityLevel): string {
   if (airLevel <= 1) return 'Outdoor play is fine.';
   if (airLevel === 2) return 'Keep outdoor play short and gentle, during the cleanest hours.';
@@ -81,6 +85,7 @@ function adviceForChildren(airLevel: SeverityLevel): string {
   return 'Keep children indoors; if they must go out, use a child-size N95 and keep trips short.';
 }
 
+/** Outdoor advice for older adults at this air level. */
 function adviceForSeniors(airLevel: SeverityLevel): string {
   if (airLevel <= 1) return 'A morning walk is fine.';
   if (airLevel === 2) return 'Prefer indoor walking; watch for breathlessness or chest discomfort.';

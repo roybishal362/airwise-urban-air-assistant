@@ -9,6 +9,7 @@ import type { Intent } from './intent.js';
  * works and never states a number the engines did not compute.
  */
 
+/** A list-item line. */
 const bullet = (text: string): string => `- ${text}`;
 
 /** How clean a window is, in words (level 1 = good). */
@@ -23,11 +24,13 @@ function peakText(worst: AirBrief['forecast']['windows']['worst'], now: string):
   return `${windowLabel(worst.start, worst.end, now)} (peak AQI ~${worst.peakAqi})`;
 }
 
+/** A window's time and how clean it is, or a fallback when there is none. */
 const describeWindow = (w: TimeWindow | null, fallback: string, now: string): string =>
   w
     ? `${windowLabel(w.start, w.end, now)} (AQI ~${w.averageAqi}, ${windowQuality(w.level)})`
     : fallback;
 
+/** "How is the air?": the summary, data source and headline advice. */
 function statusAnswer(b: AirBrief): string[] {
   return [
     b.summary,
@@ -39,6 +42,7 @@ function statusAnswer(b: AirBrief): string[] {
   ];
 }
 
+/** "Can we go out?": the family verdict, advice per member and the cleanest hours. */
 function outdoorAnswer(b: AirBrief): string[] {
   const lines = [b.risk.headline];
   for (const m of b.risk.memberAdvice.slice(0, 4)) lines.push(bullet(`${m.who}: ${m.advice}`));
@@ -52,6 +56,7 @@ function outdoorAnswer(b: AirBrief): string[] {
   return lines;
 }
 
+/** "When is best?": the cleanest windows for exercise, play and airing, and the peak to avoid. */
 function bestTimeAnswer(b: AirBrief): string[] {
   const w = b.forecast.windows;
   return [
@@ -65,6 +70,7 @@ function bestTimeAnswer(b: AirBrief): string[] {
   ];
 }
 
+/** "How do we keep the home clean?": the top indoor hacks with their effect. */
 function indoorAnswer(b: AirBrief): string[] {
   const lines = [
     `With windows shut, indoor PM2.5 is likely ~${b.indoor.baselineIndoorPm25} µg/m³ while outdoors is ~${b.indoor.outdoorPm25}.`,
@@ -74,6 +80,7 @@ function indoorAnswer(b: AirBrief): string[] {
   return lines;
 }
 
+/** "How should I commute?": the comparison of modes for today's air. */
 function commuteAnswer(b: AirBrief): string[] {
   if (!b.commute)
     return [
@@ -100,6 +107,7 @@ function commuteAnswer(b: AirBrief): string[] {
   return lines;
 }
 
+/** "How can we cut emissions?": the highest-impact actions with their yearly effect. */
 function emissionsAnswer(b: AirBrief): string[] {
   const lines = ['Your highest-impact changes, with their yearly effect:'];
   for (const action of b.actions.slice(0, 4))
@@ -107,6 +115,7 @@ function emissionsAnswer(b: AirBrief): string[] {
   return lines;
 }
 
+/** "What if our neighbours join?": the community totals. */
 function communityAnswer(b: AirBrief): string[] {
   const n = b.communityHouseholds;
   const c = b.community;
@@ -133,6 +142,7 @@ function communityAnswer(b: AirBrief): string[] {
   return lines;
 }
 
+/** "Which mask?": whether one is needed and what kind. */
 function maskAnswer(b: AirBrief): string[] {
   const particulate =
     b.current.dominantPollutant === 'pm2_5' || b.current.dominantPollutant === 'pm10';
@@ -150,6 +160,7 @@ function maskAnswer(b: AirBrief): string[] {
   ];
 }
 
+/** Health worries: what helps now and the emergency signs, with the local emergency number. */
 function healthAnswer(b: AirBrief): string[] {
   const lines = [
     `Seek emergency care right away (call ${b.region.emergencyNumber}) for chest pain, severe breathlessness, bluish lips or confusion.`,
@@ -164,6 +175,7 @@ function healthAnswer(b: AirBrief): string[] {
   return lines;
 }
 
+/** "Why is it so smoggy?": the smog-trap explanation and outlook. */
 function smogAnswer(b: AirBrief): string[] {
   const lines = b.smog.explanation.slice(0, 3);
   if (b.forecast.trend) {
@@ -179,6 +191,7 @@ function smogAnswer(b: AirBrief): string[] {
   return lines;
 }
 
+/** A greeting with today's summary and what the assistant can help with. */
 function greetingAnswer(b: AirBrief): string[] {
   return [
     `Namaste! I'm AirWise. ${b.summary}`,
@@ -200,6 +213,7 @@ const HANDLERS: Readonly<Record<Intent, (b: AirBrief) => string[]>> = {
   status: statusAnswer,
 };
 
+/** The offline answer for an intent, built only from the brief. */
 export function composeRuleAnswer(intent: Intent, brief: AirBrief): string {
   return HANDLERS[intent](brief)
     .filter((line) => line.trim().length > 0)

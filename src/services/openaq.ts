@@ -1,9 +1,19 @@
-import { z } from 'zod';
-import { MOLAR_VOLUME_L, MOLECULAR_WEIGHT } from '../domain/aqi/calculator.js';
 import { timeSpan } from '../domain/time.js';
 import type { Concentrations, PollutantId, StationInfo, StationSnapshot } from '../domain/types.js';
 import { UpstreamError } from '../lib/errors.js';
 import type { FetchFn } from '../lib/http.js';
+import {
+  PARAMETER_MAP,
+  effectiveUnits,
+  haversineKm,
+  latestSchema,
+  locationsSchema,
+  toMicrograms,
+  type Location,
+  type Reading,
+} from './openaqData.js';
+
+export { effectiveUnits, haversineKm, toMicrograms } from './openaqData.js';
 
 /**
  * Measured air quality from official monitoring stations via OpenAQ v3
@@ -14,84 +24,6 @@ import type { FetchFn } from '../lib/http.js';
 
 export const OPENAQ_BASE = 'https://api.openaq.org/v3';
 const SEARCH_RADIUS_M = 25_000;
-
-const PARAMETER_MAP: Readonly<Record<string, PollutantId>> = {
-  pm25: 'pm2_5',
-  pm10: 'pm10',
-  no2: 'no2',
-  so2: 'so2',
-  o3: 'o3',
-  co: 'co',
-};
-
-const timeSchema = z.object({ utc: z.string(), local: z.string() });
-
-const locationsSchema = z.object({
-  results: z.array(
-    z.object({
-      id: z.number(),
-      name: z.string().nullable(),
-      isMonitor: z.boolean().optional(),
-      provider: z.object({ name: z.string() }).nullable().optional(),
-      coordinates: z.object({ latitude: z.number(), longitude: z.number() }),
-      datetimeLast: timeSchema.nullable().optional(),
-      sensors: z.array(
-        z.object({
-          id: z.number(),
-          parameter: z.object({ name: z.string(), units: z.string() }),
-        }),
-      ),
-    }),
-  ),
-});
-
-const latestSchema = z.object({
-  results: z.array(
-    z.object({
-      datetime: timeSchema,
-      value: z.number().nullable(),
-      sensorsId: z.number(),
-    }),
-  ),
-});
-
-/** Great-circle distance in kilometres. */
-export function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
-  const rad = (deg: number) => (deg * Math.PI) / 180;
-  const a =
-    Math.sin(rad(lat2 - lat1) / 2) ** 2 +
-    Math.cos(rad(lat1)) * Math.cos(rad(lat2)) * Math.sin(rad(lon2 - lon1) / 2) ** 2;
-  return 6371 * 2 * Math.asin(Math.sqrt(a));
-}
-
-/** Convert a reported value to µg/m³ (gases at 25 °C, 1 atm). Null for unknown units. */
-export function toMicrograms(value: number, units: string, pollutant: PollutantId): number | null {
-  const unit = units.trim().toLowerCase().replace('μ', 'µ').replace('³', '3');
-  if (unit === 'µg/m3' || unit === 'ug/m3') return value;
-  if (unit === 'mg/m3') return value * 1000;
-  const weight = MOLECULAR_WEIGHT[pollutant];
-  if (weight === undefined) return null;
-  if (unit === 'ppb') return (value * weight) / MOLAR_VOLUME_L;
-  if (unit === 'ppm') return (value * 1000 * weight) / MOLAR_VOLUME_L;
-  return null;
-}
-
-/**
- * The units a reading is really in. OpenAQ labels India's CPCB gas sensors
- * "ppb", but the values are CPCB's native units: µg/m³, and mg/m³ for CO.
- * Verified on live Delhi data (24 Nov 2026, 10 stations): NOx (ppb) equals
- * NO + NO2 only when NO and NO2 are read as µg/m³ (R K Puram: 1.9 + 26.3
- * µg/m³ = 15.5 ppb vs NOx 0.0156 ppm), and CO "0.87 ppb" is physically
- * impossible outdoors but a typical value in mg/m³.
- */
-export function effectiveUnits(
-  provider: string | undefined,
-  pollutant: PollutantId,
-  labelled: string,
-): string {
-  if (provider !== 'CPCB' || pollutant === 'pm2_5' || pollutant === 'pm10') return labelled;
-  return pollutant === 'co' ? 'mg/m³' : 'µg/m³';
-}
 
 export interface StationClient {
   latest(latitude: number, longitude: number): Promise<StationSnapshot | null>;
@@ -112,8 +44,6 @@ export interface OpenAqOptions {
   maxStations?: number;
 }
 
-type Location = z.infer<typeof locationsSchema>['results'][number];
-type Reading = z.infer<typeof latestSchema>['results'][number];
 type IsFresh = (utc: string | undefined) => boolean;
 type GetJson = (url: URL) => Promise<unknown>;
 
@@ -131,7 +61,9 @@ interface StationReading {
 
 const HOUR_MS = 3_600_000;
 const PARTICLES = new Set(['pm25', 'pm10']);
+/** Round to one decimal. */
 const round1 = (value: number): number => Math.round(value * 10) / 10;
+/** The error raised when station data cannot be used. */
 const unavailable = (detail: string) =>
   new UpstreamError('Station data is unavailable right now.', { detail });
 
@@ -205,6 +137,7 @@ function toStationReading(
   return value === null ? null : { pollutant, value, measuredAtLocal: reading.datetime.local };
 }
 
+/** A station's name, distance, provider and latest measurement time, for the source line. */
 function stationInfo(
   { loc, distanceKm }: Candidate,
   readings: readonly StationReading[],
@@ -253,6 +186,7 @@ function snapshot(
     : null;
 }
 
+/** Client returning averaged readings from the nearest fresh reference stations, or null when there are none. */
 export function createOpenAqClient(options: OpenAqOptions): StationClient {
   const {
     apiKey,

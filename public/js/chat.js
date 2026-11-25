@@ -88,36 +88,51 @@ function bindComposer(form, input, ask) {
   });
 }
 
-/** @param {ChatOptions} options */
+/**
+ * The "waiting for an answer" state: it blocks new questions, marks the log busy and
+ * disables the Send button.
+ * @param {HTMLElement} log @param {HTMLFormElement} form
+ */
+function busyState(log, form) {
+  const button = /** @type {HTMLButtonElement | null} */ (
+    form.querySelector('button[type="submit"]')
+  );
+  let busy = false;
+  return {
+    isBusy: () => busy,
+    /** @param {boolean} on */
+    set(on) {
+      busy = on;
+      log.setAttribute('aria-busy', String(on));
+      if (button) button.disabled = on;
+    },
+  };
+}
+
+/**
+ * Post the question with a "thinking" placeholder and clear the input; returns the placeholder.
+ * @param {HTMLElement} log @param {HTMLTextAreaElement} input @param {string} message
+ */
+function postQuestion(log, input, message) {
+  log.appendChild(messageNode({ role: 'user', content: message }));
+  const thinking = el('p', { className: 'msg msg-pending', text: 'AirWise is thinking…' });
+  log.appendChild(thinking);
+  input.value = '';
+  return thinking;
+}
+
+/**
+ * The chat: one question at a time, the last six turns sent as context, every answer
+ * rendered as plain text.
+ * @param {ChatOptions} options
+ */
 export function createChat(options) {
   /** @type {Turn[]} */
   const history = [];
-  let busy = false;
-  const button = /** @type {HTMLButtonElement | null} */ (
-    options.form.querySelector('button[type="submit"]')
-  );
-
-  /** @param {boolean} on */
-  function setBusy(on) {
-    busy = on;
-    options.log.setAttribute('aria-busy', String(on));
-    if (button) button.disabled = on;
-  }
+  const busy = busyState(options.log, options.form);
 
   /** @param {readonly string[]} questions */
   const showSuggestions = (questions) => renderSuggestions(options.suggestions, questions, ask);
-
-  /**
-   * Post the question with a "thinking" placeholder; returns the placeholder.
-   * @param {string} message
-   */
-  function postQuestion(message) {
-    options.log.appendChild(messageNode({ role: 'user', content: message }));
-    const thinking = el('p', { className: 'msg msg-pending', text: 'AirWise is thinking…' });
-    options.log.appendChild(thinking);
-    options.input.value = '';
-    return thinking;
-  }
 
   /**
    * Record the exchange and swap the placeholder for the answer.
@@ -132,19 +147,19 @@ export function createChat(options) {
   /** @param {string} raw */
   async function ask(raw) {
     const message = raw.trim().slice(0, 600);
-    if (!message || busy) return;
+    if (!message || busy.isBusy()) return;
     if (!options.canSend()) {
       options.onBlocked();
       return;
     }
-    setBusy(true);
-    const thinking = postQuestion(message);
+    busy.set(true);
+    const thinking = postQuestion(options.log, options.input, message);
     try {
       showAnswer(message, await options.send(message, history.slice(-6)), thinking);
     } catch (error) {
       thinking.replaceWith(messageNode({ role: 'assistant', content: failureText(error) }));
     } finally {
-      setBusy(false);
+      busy.set(false);
       options.log.scrollTop = options.log.scrollHeight;
     }
   }

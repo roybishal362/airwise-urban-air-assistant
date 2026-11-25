@@ -175,58 +175,89 @@ export function renderChart(brief) {
 }
 
 /**
+ * The three key windows, in display order.
+ * @type {readonly { dot: string, label: string, key: 'outdoor' | 'ventilation' | 'worst', none: string }[]}
+ */
+const WINDOW_ROWS = [
+  { dot: 'dot-best', label: 'Cleanest hour', key: 'outdoor', none: 'none clean enough' },
+  {
+    dot: 'dot-air',
+    label: 'Best time to air the home',
+    key: 'ventilation',
+    none: 'keep windows shut',
+  },
+  { dot: 'dot-worst', label: 'Most polluted', key: 'worst', none: 'no major peak' },
+];
+
+/**
+ * One key window: its time and average AQI, or what to do when there is none.
+ * @param {(typeof WINDOW_ROWS)[number]} row @param {TimeWindow | null} w @param {string} observedAt
+ */
+function windowItem(row, w, observedAt) {
+  return el(
+    'li',
+    {},
+    el('span', { className: `dot ${row.dot}`, 'aria-hidden': 'true' }),
+    el('strong', { text: `${row.label}: ` }),
+    w
+      ? `${timeRange(w.start, w.end)}${dayWord(w.start, observedAt)} (AQI ~${w.averageAqi})`
+      : row.none,
+  );
+}
+
+/**
+ * Screen-reader list of every hour's AQI (the chart's data in text).
+ * @param {Brief} brief
+ */
+function hourList({ forecast, observedAt }) {
+  return el(
+    'ol',
+    { className: 'visually-hidden', 'aria-label': 'Hourly air quality values' },
+    forecast.hours.map((h) =>
+      el('li', {
+        text: `${clock(h.time)}${dayWord(h.time, observedAt)}: AQI ${h.aqi}, ${h.label}`,
+      }),
+    ),
+  );
+}
+
+/**
+ * The smog-trap box: today's risk, the ventilation coefficient now and why.
+ * @param {Brief['smog']} smog
+ */
+function smogBox(smog) {
+  return el(
+    'div',
+    { className: `smog-box smog-${smog.trapRisk}` },
+    el('h3', { text: `Smog-trap risk: ${trapRiskLabel(smog.trapRisk)}` }),
+    smog.ventilationNowM2s !== null
+      ? el('p', {
+          className: 'hint',
+          text: `Ventilation coefficient now: ${formatNumber(smog.ventilationNowM2s)} m²/s (${smog.dispersionNow} dispersion)`,
+        })
+      : null,
+    el(
+      'ul',
+      {},
+      smog.explanation.map((line) => el('li', { text: line })),
+    ),
+  );
+}
+
+/**
  * Chart, key windows (with screen-reader data list) and the smog-trap explainer.
  * @param {Brief} brief
  */
 export function renderForecast(brief) {
-  const { hours, windows } = brief.forecast;
-
-  /** @param {string} dot @param {string} label @param {TimeWindow | null} w @param {string} none */
-  const windowItem = (dot, label, w, none) =>
-    el(
-      'li',
-      {},
-      el('span', { className: `dot ${dot}`, 'aria-hidden': 'true' }),
-      el('strong', { text: `${label}: ` }),
-      w
-        ? `${timeRange(w.start, w.end)}${dayWord(w.start, brief.observedAt)} (AQI ~${w.averageAqi})`
-        : none,
-    );
-
-  const smog = brief.smog;
+  const { windows } = brief.forecast;
   return [
     renderChart(brief),
-    el(
-      'ol',
-      { className: 'visually-hidden', 'aria-label': 'Hourly air quality values' },
-      hours.map((h) =>
-        el('li', {
-          text: `${clock(h.time)}${dayWord(h.time, brief.observedAt)}: AQI ${h.aqi}, ${h.label}`,
-        }),
-      ),
-    ),
+    hourList(brief),
     el(
       'ul',
       { className: 'windows' },
-      windowItem('dot-best', 'Cleanest hour', windows.outdoor, 'none clean enough'),
-      windowItem('dot-air', 'Best time to air the home', windows.ventilation, 'keep windows shut'),
-      windowItem('dot-worst', 'Most polluted', windows.worst, 'no major peak'),
+      WINDOW_ROWS.map((row) => windowItem(row, windows[row.key], brief.observedAt)),
     ),
-    el(
-      'div',
-      { className: `smog-box smog-${smog.trapRisk}` },
-      el('h3', { text: `Smog-trap risk: ${trapRiskLabel(smog.trapRisk)}` }),
-      smog.ventilationNowM2s !== null
-        ? el('p', {
-            className: 'hint',
-            text: `Ventilation coefficient now: ${formatNumber(smog.ventilationNowM2s)} m²/s (${smog.dispersionNow} dispersion)`,
-          })
-        : null,
-      el(
-        'ul',
-        {},
-        smog.explanation.map((line) => el('li', { text: line })),
-      ),
-    ),
+    smogBox(brief.smog),
   ];
 }
