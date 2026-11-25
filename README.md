@@ -11,6 +11,9 @@
 
 **Live app:** https://airwise-urban-air-assistant.vercel.app (Vercel, Mumbai region)
 
+**Demo video (2:40):** https://youtu.be/1Vuj0Vgyci4 (live testing on the deployed app, Gemini in English and Hindi,
+and how the GenAI is grounded in measured data)
+
 ---
 
 ## Contents
