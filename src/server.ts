@@ -40,6 +40,22 @@ export function selectStaticDir(env: string, buildExists: boolean): string {
   return env === 'production' && buildExists ? WEB_BUILD_DIR : PUBLIC_DIR;
 }
 
+/** Measured station data needs a (free) OpenAQ key; without one the app runs on the model alone. */
+export function stationClient(config: AppConfig): StationClient | null {
+  if (!config.openAqApiKey) return null;
+  return createOpenAqClient({ apiKey: config.openAqApiKey, timeoutMs: config.upstreamTimeoutMs });
+}
+
+/** Stop accepting connections; resolves once in-flight requests finish. */
+function closeServer(server: Server): Promise<void> {
+  return new Promise((resolve, reject) => {
+    server.close((error) => {
+      if (error) reject(error);
+      else resolve();
+    });
+  });
+}
+
 /**
  * Build the production app from environment variables. Shared by the
  * long-running server below and the serverless entry (`src/vercel.ts`), so
@@ -53,12 +69,7 @@ export function composeApp(
   const logger = createLogger(config.logLevel);
   const briefService = createBriefService({
     client: overrides.client ?? createOpenMeteoClient({ timeoutMs: config.upstreamTimeoutMs }),
-    stations:
-      overrides.stations !== undefined
-        ? overrides.stations
-        : config.openAqApiKey
-          ? createOpenAqClient({ apiKey: config.openAqApiKey, timeoutMs: config.upstreamTimeoutMs })
-          : null,
+    stations: overrides.stations !== undefined ? overrides.stations : stationClient(config),
     logger,
   });
   const assistant = createAssistant(selectProvider(config.llm), logger);
@@ -99,13 +110,7 @@ export async function startServer(
         server,
         port,
         logger,
-        close: () =>
-          new Promise<void>((done, fail) =>
-            server.close((error) => {
-              if (error) fail(error);
-              else done();
-            }),
-          ),
+        close: () => closeServer(server),
       });
     });
   });

@@ -21,7 +21,18 @@ vulnerability") instead of a public issue. We aim to respond within 72 hours.
 | Container hardening                               | Multi-stage build, production dependencies only, runs as the unprivileged `node` user                                                                                                                                                                                    | `Dockerfile`                                                                                     |
 | Traceability                                      | Every response and log line carries a random `X-Request-Id`; logs hold no bodies or query strings                                                                                                                                                                        | `src/http/middleware/requestGuards.ts`, `src/app.ts`                                             |
 | Static analysis                                   | GitHub CodeQL (security-and-quality queries) on every push and weekly                                                                                                                                                                                                    | `.github/workflows/codeql.yml`                                                                   |
+| Regular-expression DoS                            | SonarJS rules in `npm run lint` reject super-linear (backtracking) and over-complex regexes; user text is length-capped before matching                                                                                                                                  |
 | Vulnerable dependencies                           | `npm audit --omit=dev --audit-level=high` runs in CI                                                                                                                                                                                                                     | `.github/workflows/ci.yml`                                                                       |
+
+## How to verify
+
+```bash
+npm run test:coverage   # tests/integration/api.test.ts, guards-server.test.ts: headers, CSP, validation,
+                        # 403 cross-site, 413 body limit, 415 non-JSON, 429 rate limit, no internal leaks
+npm run lint            # SonarJS security-sensitive patterns (ReDoS-prone regexes and more)
+npm audit               # 0 known vulnerabilities, including development tools
+curl -sI https://airwise-urban-air-assistant.vercel.app/ | grep -iE "content-security|strict-transport"
+```
 
 ## Notes
 

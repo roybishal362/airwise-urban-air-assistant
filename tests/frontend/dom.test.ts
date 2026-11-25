@@ -99,7 +99,7 @@ describe('rendering a real brief', () => {
     expect(document.querySelectorAll('.hack').length).toBeGreaterThan(3);
     expect(document.querySelector('.commute caption')?.textContent).toMatch(/commute/);
     expect(document.querySelector('.figures')?.textContent).toMatch(/All 25 households/);
-    expect(document.querySelectorAll('[data-pledge]').length).toBe(
+    expect(document.querySelectorAll('[data-pledge]')).toHaveLength(
       document.querySelectorAll('.action').length,
     );
     expect(document.querySelector('#community-range')?.getAttribute('value')).toBe('25');
@@ -319,8 +319,8 @@ describe('edge cases in rendering and chat', () => {
   });
 
   it('ignores a second question while one is in flight and handles odd answers', async () => {
-    let release: (value: { reply: string; source: string; suggestions?: string[] }) => void = () =>
-      undefined;
+    let release:
+      ((value: { reply: string; source: string; suggestions?: string[] }) => void) | undefined;
     const send = vi.fn(
       () =>
         new Promise<{ reply: string; source: string; suggestions?: string[] }>((resolve) => {
@@ -339,7 +339,7 @@ describe('edge cases in rendering and chat', () => {
     const first = chat.ask('one');
     await chat.ask('two');
     expect(send).toHaveBeenCalledTimes(1);
-    release({ reply: 'ok', source: 'mystery-engine' });
+    release?.({ reply: 'ok', source: 'mystery-engine' });
     await first;
     expect(byId('chat-log', HTMLDivElement).querySelector('.msg-source')?.textContent).toBe('');
     expect(byId('chat-suggestions', HTMLDivElement).children).toHaveLength(0);

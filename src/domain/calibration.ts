@@ -6,6 +6,7 @@ import {
   type StationInfo,
   type StationSnapshot,
 } from './types.js';
+import { clockLabel, timeSpan } from './time.js';
 
 /**
  * Global air-quality models (Copernicus CAMS) capture the daily rhythm of
@@ -44,22 +45,22 @@ const round2 = (value: number): number => Math.round(value * 100) / 100;
 
 /** Latest measurement time across stations (local 'YYYY-MM-DDTHH:MM'), or ''. */
 const latestMeasurement = (stations: readonly StationInfo[]): string =>
-  stations
-    .map((s) => s.measuredAtLocal)
-    .filter(Boolean)
-    .sort()
-    .at(-1) ?? '';
+  timeSpan(measuredTimes(stations))?.last ?? '';
+
+/** Measurement times of the stations that reported one. */
+const measuredTimes = (stations: readonly StationInfo[]): string[] =>
+  stations.map((s) => s.measuredAtLocal).filter(Boolean);
+
+/** " at 10:00" for a single time, " 09:30–12:00" for a span, "" when unknown. */
+function measuredWhen(first: string, last: string): string {
+  if (!first || !last) return '';
+  return first === last ? ` at ${last}` : ` ${first}–${last}`;
+}
 
 export function describeStations(provider: string, stations: readonly StationInfo[]): string {
   const names = stations.map((s) => `${s.name} (${s.distanceKm.toFixed(1)} km)`).join(', ');
-  const times = stations
-    .map((s) => s.measuredAtLocal)
-    .filter(Boolean)
-    .sort()
-    .map((t) => t.slice(11, 16));
-  const [first] = times;
-  const last = times.at(-1);
-  const time = !first || !last ? '' : first === last ? ` at ${last}` : ` ${first}–${last}`;
+  const span = timeSpan(measuredTimes(stations));
+  const time = span ? measuredWhen(clockLabel(span.first), clockLabel(span.last)) : '';
   return `Measured${time} by ${stations.length} monitoring station${stations.length === 1 ? '' : 's'} via ${provider}: ${names}.`;
 }
 

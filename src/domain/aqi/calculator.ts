@@ -80,8 +80,8 @@ export function categoryFor(value: number, standardId: StandardId): AqiCategory 
   const { categories } = STANDARDS[standardId];
   const match = categories.find((c) => value <= c.max) ?? categories[categories.length - 1];
   if (!match) throw new Error(`Standard ${standardId} has no categories`);
-  const { min: _min, max: _max, ...category } = match;
-  return category;
+  const { level, label, color, textColor, meaning } = match;
+  return { level, label, color, textColor, meaning };
 }
 
 /**
@@ -121,7 +121,7 @@ const INDIAN_TIMEZONES = new Set(['Asia/Kolkata', 'Asia/Calcutta']);
 /** Pick the standard people in that place actually see on the news. */
 export function resolveStandard(
   preference: StandardPreference,
-  context: { countryCode?: string | undefined; timezone?: string | undefined },
+  context: { countryCode?: string; timezone?: string },
 ): StandardId {
   if (preference !== 'auto') return preference;
   if (context.countryCode?.toUpperCase() === 'IN') return 'in';

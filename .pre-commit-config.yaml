@@ -1,0 +1,26 @@
+# Optional local hooks (https://pre-commit.com): `pip install pre-commit && pre-commit install`.
+# They run the same checks as CI, so a broken commit never leaves the machine.
+repos:
+  - repo: local
+    hooks:
+      - id: prettier
+        name: Prettier (format check)
+        entry: npm run format:check
+        language: system
+        pass_filenames: false
+      - id: eslint
+        name: ESLint (typed rules, SonarJS, size and complexity limits)
+        entry: npm run lint
+        language: system
+        pass_filenames: false
+      - id: typecheck
+        name: TypeScript (server and browser)
+        entry: npm run typecheck
+        language: system
+        pass_filenames: false
+      - id: tests
+        name: Vitest
+        entry: npm test
+        language: system
+        pass_filenames: false
+        stages: [pre-push]

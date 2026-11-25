@@ -50,6 +50,7 @@
     "axe-core": "^4.14.1",
     "esbuild": "0.28.2",
     "eslint": "^10.15.0",
+    "eslint-plugin-sonarjs": "^4.2.2",
     "fast-check": "^4.11.0",
     "globals": "^17.14.0",
     "jsdom": "^29.1.1",
@@ -59,5 +60,10 @@
     "typescript": "^6.0.3",
     "typescript-eslint": "^8.74.0",
     "vitest": "^5.1.1"
+  },
+  "overrides": {
+    "eslint-plugin-sonarjs": {
+      "minimatch": "^11.0.9"
+    }
   }
 }

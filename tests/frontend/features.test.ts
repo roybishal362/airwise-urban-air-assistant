@@ -238,8 +238,9 @@ describe('impact controls', () => {
 });
 
 describe('voice input', () => {
+  const created: FakeRecogniser[] = [];
+  const lastRecogniser = () => created.at(-1);
   class FakeRecogniser {
-    static last: FakeRecogniser | null = null;
     lang = '';
     interimResults = true;
     maxAlternatives = 5;
@@ -249,7 +250,7 @@ describe('voice input', () => {
     start = vi.fn();
     stop = vi.fn(() => this.onend?.());
     constructor() {
-      FakeRecogniser.last = this;
+      created.push(this);
     }
   }
 
@@ -273,7 +274,7 @@ describe('voice input', () => {
     const button = $<HTMLButtonElement>('voice-button');
     const input = $<HTMLTextAreaElement>('chat-input');
     setupVoice({ button, input, onTranscript, setStatus, Recognition: FakeRecogniser as never });
-    const rec = FakeRecogniser.last as FakeRecogniser;
+    const rec = lastRecogniser() as FakeRecogniser;
     expect(button.hidden).toBe(false);
     expect(rec.lang).toBe('en-IN');
     button.click();
@@ -310,7 +311,7 @@ describe('voice input', () => {
       Recognition: FakeRecogniser as never,
     });
     await app.ready;
-    FakeRecogniser.last?.onresult?.({ results: [[{ transcript: 'Can we go out?' }]] });
+    lastRecogniser()?.onresult?.({ results: [[{ transcript: 'Can we go out?' }]] });
     await vi.waitFor(() =>
       expect(sendChat).toHaveBeenCalledWith(expect.objectContaining({ message: 'Can we go out?' })),
     );

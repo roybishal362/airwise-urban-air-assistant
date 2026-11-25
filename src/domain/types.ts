@@ -38,10 +38,10 @@ export interface GeoLocation {
   name: string;
   latitude: number;
   longitude: number;
-  country?: string | undefined;
-  countryCode?: string | undefined;
-  region?: string | undefined;
-  timezone?: string | undefined;
+  country?: string;
+  countryCode?: string;
+  region?: string;
+  timezone?: string;
 }
 
 /** Local wall-clock time string as returned by Open-Meteo: `YYYY-MM-DDTHH:mm`. */

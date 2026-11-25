@@ -100,12 +100,22 @@ export interface Trend {
 }
 
 /** Compare "now" with the average of the next few hours (±10 % counts as stable). */
+/** Improving or worsening once the coming hours average at least 10 % away from now. */
+function trendDirection(change: number): Trend['direction'] {
+  if (change <= -0.1) return 'improving';
+  return change >= 0.1 ? 'worsening' : 'stable';
+}
+
 export function describeTrend(points: readonly HourlyIndex[], lookaheadHours = 6): Trend | null {
   const current = points[0];
   const upcoming = points.slice(1, 1 + lookaheadHours);
   if (!current || upcoming.length === 0) return null;
   const next = Math.round(upcoming.reduce((s, p) => s + p.aqi, 0) / upcoming.length);
   const change = (next - current.aqi) / Math.max(current.aqi, 1);
-  const direction = change <= -0.1 ? 'improving' : change >= 0.1 ? 'worsening' : 'stable';
-  return { direction, now: current.aqi, next, lookaheadHours: upcoming.length };
+  return {
+    direction: trendDirection(change),
+    now: current.aqi,
+    next,
+    lookaheadHours: upcoming.length,
+  };
 }

@@ -93,7 +93,7 @@ export function textToBlocks(text) {
   for (const raw of text.split(/\r?\n/)) {
     const line = raw.trim().replace(/\*\*(.+?)\*\*/g, '$1');
     if (!line) continue;
-    const bullet = /^(?:[-•*]|\d+[.)])\s+(.*)$/.exec(line);
+    const bullet = /^(?:[-•*]|\d+[.)])\s+(\S.*)$/.exec(line);
     if (bullet) {
       const last = blocks[blocks.length - 1];
       const item = bullet[1] ?? '';

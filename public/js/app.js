@@ -158,10 +158,13 @@ function setupFamily({ env, state, shell, loadBrief }) {
 }
 
 /** @param {string | undefined} assistant */
-const assistantModeText = (assistant) =>
-  assistant === 'rules'
-    ? 'Running in offline mode: answers come from AirWise rules using your live data.'
-    : `Powered by ${assistant === 'gemini' ? 'Google Gemini' : 'Claude'}, grounded in your live air data. Your household details are sent without any names.`;
+const assistantModeText = (assistant) => {
+  if (assistant === 'rules') {
+    return 'Running in offline mode: answers come from AirWise rules using your live data.';
+  }
+  const engine = assistant === 'gemini' ? 'Google Gemini' : 'Claude';
+  return `Powered by ${engine}, grounded in your live air data. Your household details are sent without any names.`;
+};
 
 /**
  * The assistant: chat, voice input and the "which engine answers" line.

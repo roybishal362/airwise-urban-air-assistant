@@ -18,36 +18,181 @@ export const INTENTS = [
 ] as const;
 export type Intent = (typeof INTENTS)[number];
 
-/** Checked in order: safety-related intents first, the generic status last. */
-const RULES: readonly (readonly [Intent, RegExp])[] = [
+/**
+ * Keywords per intent, checked in order: safety-related intents first, the
+ * generic status last. A trailing `*` matches any word ending
+ * ("cough*" → cough, coughing); multi-word phrases match as written.
+ */
+const KEYWORDS: readonly (readonly [Intent, readonly string[]])[] = [
   [
     'health',
-    /\b(cough\w*|wheez\w*|asthma|breath\w*|chest|symptom\w*|headache|throat|eyes? (?:burn|itch|water)\w*|pregnan\w*|copd|heart|inhaler|doctor|hospital|sick|dizzy|khansi|saans)\b/i,
+    [
+      'cough*',
+      'wheez*',
+      'asthma',
+      'breath*',
+      'chest',
+      'symptom*',
+      'headache',
+      'throat',
+      'eye burn*',
+      'eyes burn*',
+      'eye itch*',
+      'eyes itch*',
+      'eye water*',
+      'eyes water*',
+      'pregnan*',
+      'copd',
+      'heart',
+      'inhaler',
+      'doctor',
+      'hospital',
+      'sick',
+      'dizzy',
+      'khansi',
+      'saans',
+    ],
   ],
-  ['mask', /\b(masks?|n95|kn95|ffp2|respirator)\b/i],
+  ['mask', ['mask', 'masks', 'n95', 'kn95', 'ffp2', 'respirator']],
   [
     'indoor',
-    /\b(indoors?|inside|home|house|rooms?|windows?|khidki|purifiers?|ventilat\w*|filters?|plants?|cook\w*|kitchen|incense|agarbatti|heater|angithi|ac)\b/i,
+    [
+      'indoor',
+      'indoors',
+      'inside',
+      'home',
+      'house',
+      'room',
+      'rooms',
+      'window',
+      'windows',
+      'khidki',
+      'purifier',
+      'purifiers',
+      'ventilat*',
+      'filter',
+      'filters',
+      'plant',
+      'plants',
+      'cook*',
+      'kitchen',
+      'incense',
+      'agarbatti',
+      'heater',
+      'angithi',
+      'ac',
+    ],
   ],
   [
     'commute',
-    /\b(commut\w*|office|metro|bus|car|bike|scooter|drive|driving|auto|carpool\w*|travel\w*)\b/i,
+    [
+      'commut*',
+      'office',
+      'metro',
+      'bus',
+      'car',
+      'bike',
+      'scooter',
+      'drive',
+      'driving',
+      'auto',
+      'carpool*',
+      'travel*',
+    ],
   ],
-  ['community', /\b(community|neighbou?rs?|society|rwa|colony|street|together|campaign)\b/i],
+  [
+    'community',
+    [
+      'community',
+      'neighbor',
+      'neighbors',
+      'neighbour',
+      'neighbours',
+      'society',
+      'rwa',
+      'colony',
+      'street',
+      'together',
+      'campaign',
+    ],
+  ],
   [
     'emissions',
-    /\b(emissions?|carbon|co2|footprint|sustainab\w*|eco|green|climate|reduce pollution|my impact|difference)\b/i,
+    [
+      'emission',
+      'emissions',
+      'carbon',
+      'co2',
+      'footprint',
+      'sustainab*',
+      'eco',
+      'green',
+      'climate',
+      'reduce pollution',
+      'my impact',
+      'difference',
+    ],
   ],
-  ['best_time', /\b(when|what time|best time|which hour|schedule|timing)\b/i],
+  ['best_time', ['when', 'what time', 'best time', 'which hour', 'schedule', 'timing']],
   [
     'outdoor',
-    /\b(run\w*|jog\w*|walk\w*|exercis\w*|workout|play\w*|park|outside|outdoors?|cycl\w*|yoga|sports?|cricket|football|bacch\w*|kids?|children)\b/i,
+    [
+      'run*',
+      'jog*',
+      'walk*',
+      'exercis*',
+      'workout',
+      'play*',
+      'park',
+      'outside',
+      'outdoor',
+      'outdoors',
+      'cycl*',
+      'yoga',
+      'sport',
+      'sports',
+      'cricket',
+      'football',
+      'bacch*',
+      'kid',
+      'kids',
+      'children',
+    ],
   ],
   [
     'smog',
-    /\b(smog|fog|inversion|why|tomorrow|tonight|forecast|later|wind|stubble|parali|dhuan)\b/i,
+    [
+      'smog',
+      'fog',
+      'inversion',
+      'why',
+      'tomorrow',
+      'tonight',
+      'forecast',
+      'later',
+      'wind',
+      'stubble',
+      'parali',
+      'dhuan',
+    ],
   ],
 ];
+
+/** One keyword as a regex fragment: the text is literal; a trailing `*` matches any word ending. */
+function keywordSource(keyword: string): string {
+  const wildcard = keyword.endsWith('*');
+  const stem = wildcard ? keyword.slice(0, -1) : keyword;
+  const literal = stem.replace(/[.+?^${}()|[\]\\]/g, '\\$&');
+  return wildcard ? `${literal}\\w*` : literal;
+}
+
+/** A whole-word, case-insensitive matcher for a keyword list. */
+const matcher = (keywords: readonly string[]): RegExp =>
+  new RegExp(`\\b(?:${keywords.map(keywordSource).join('|')})\\b`, 'i');
+
+const RULES: readonly (readonly [Intent, RegExp])[] = KEYWORDS.map(
+  ([intent, keywords]) => [intent, matcher(keywords)] as const,
+);
 
 const GREETING = /^\s*(hi|hello|hey|namaste|namaskar|help|start|what can you do)\b[\s!.?]*$/i;
 

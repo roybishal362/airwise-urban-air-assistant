@@ -30,7 +30,7 @@ export const ASSETS_DIR = 'assets';
 
 const SCRIPT_TAG = /<script type="module" src="\/js\/main\.js"><\/script>/;
 const STYLE_TAG = /<link rel="stylesheet" href="\/css\/styles\.css" \/>/;
-const MODULE_PRELOADS = /\s*<link rel="modulepreload" href="\/js\/[^"]+" \/>/g;
+const MODULE_PRELOADS = /\n[ \t]*<link rel="modulepreload" href="\/js\/[^"]+" \/>/g;
 
 /** Rewrite the development HTML to the hashed production assets. */
 export function rewriteHtml(html: string, script: string, stylesheet: string): string {

@@ -29,6 +29,24 @@ export function addHours(time: LocalTime, hours: number): LocalTime {
   return shifted.toISOString().slice(0, 16);
 }
 
+/**
+ * Earliest and latest of a list of local times. The format is fixed-width, so
+ * comparing the strings compares the times. Null for an empty list.
+ */
+export function timeSpan(
+  times: readonly LocalTime[],
+): { first: LocalTime; last: LocalTime } | null {
+  const [head] = times;
+  if (head === undefined) return null;
+  let first = head;
+  let last = head;
+  for (const time of times) {
+    if (time < first) first = time;
+    if (time > last) last = time;
+  }
+  return { first, last };
+}
+
 /** `06:00` style label. */
 export function clockLabel(time: LocalTime): string {
   return time.slice(11, 16);

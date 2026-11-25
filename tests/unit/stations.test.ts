@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { loadConfig } from '../../src/config.js';
 import { buildBrief } from '../../src/domain/brief.js';
 import {
   MAX_FACTOR,
@@ -18,7 +19,10 @@ import {
   toMicrograms,
 } from '../../src/services/openaq.js';
 import type { OpenMeteoClient } from '../../src/services/openMeteo.js';
+import { stationClient } from '../../src/server.js';
 import { DELHI, makeAir, makeHousehold, makeWeather } from '../fixtures/data.js';
+
+type FetchInput = string | URL | Request;
 
 const NOW = Date.parse('2026-11-24T10:00:00Z');
 const fresh = { utc: '2026-11-24T09:00:00Z', local: '2026-11-24T14:30:00+05:30' };
@@ -88,8 +92,14 @@ describe('unit conversion and distance', () => {
 });
 
 describe('OpenAQ client', () => {
+  it('is used only when an OpenAQ key is configured', () => {
+    expect(stationClient(loadConfig({ LOG_LEVEL: 'silent' }))).toBeNull();
+    const withKey = stationClient(loadConfig({ LOG_LEVEL: 'silent', OPENAQ_API_KEY: 'test-key' }));
+    expect(withKey?.latest).toBeTypeOf('function');
+  });
+
   function clientWith(locations: unknown[], latest: Record<number, unknown[]>) {
-    const fetchFn = vi.fn(async (input: string | URL | Request, _init?: RequestInit) => {
+    const fetchFn = vi.fn(async (input: FetchInput, _init?: RequestInit) => {
       const url = new URL(String(input));
       if (url.pathname.endsWith('/locations')) return json({ results: locations });
       const id = Number(url.pathname.split('/').at(-2));
@@ -190,7 +200,7 @@ describe('OpenAQ client', () => {
   it('fetches station readings in parallel and skips a station that fails', async () => {
     let inFlight = 0;
     let peak = 0;
-    const fetchFn = vi.fn(async (input: string | URL | Request) => {
+    const fetchFn = vi.fn(async (input: FetchInput) => {
       const url = String(input);
       if (!url.includes('/latest')) {
         return json({ results: [location(1, 28.66, 77.23), location(2, 28.7, 77.3)] });

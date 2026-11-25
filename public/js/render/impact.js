@@ -6,6 +6,18 @@ import { icon } from './icons.js';
 import { stat } from './stat.js';
 
 /**
+ * Whether another commute mode suits today's air (the current mode needs no verdict).
+ * @param {{ current: boolean, suitableToday: boolean }} row
+ */
+function suitability(row) {
+  if (row.current) return '—';
+  return row.suitableToday ? 'Yes' : 'Better on cleaner days';
+}
+
+/** @param {number} count */
+const pledgeCount = (count) => (count === 1 ? '1 pledge' : `${count} pledges`);
+
+/**
  * @typedef {import('../../../src/domain/brief.js').AirBrief} Brief
  * @typedef {import('../../../src/domain/impact/index.js').ModeImpact} ModeImpact
  * @typedef {import('../../../src/domain/impact/index.js').CommuteComparison} CommuteComparison
@@ -112,7 +124,7 @@ function commuteTable(commute) {
               ? `${r.inhaledPm25UgPerDay} µg`
               : `${r.inhaledPm25UgPerDay} µg (${signedPct(r.inhaledChangePct)})`,
           }),
-          el('td', { text: r.current ? '—' : r.suitableToday ? 'Yes' : 'Better on cleaner days' }),
+          el('td', { text: suitability(r) }),
         ),
       ),
     ),
@@ -131,7 +143,7 @@ export function renderPledgeSummary(brief, pledged) {
     { className: 'pledge-summary', id: 'pledge-summary', role: 'status' },
     totals.count === 0
       ? 'Tap “I’ll do this” on any action below to build your family’s pledge.'
-      : `Your ${totals.count} pledge${totals.count === 1 ? '' : 's'}: ${formatCo2(totals.co2KgPerYear)} and ${formatMass(totals.pm25GPerYear)} of PM2.5 avoided a year (≈ ${formatNumber(totals.trees)} trees).`,
+      : `Your ${pledgeCount(totals.count)}: ${formatCo2(totals.co2KgPerYear)} and ${formatMass(totals.pm25GPerYear)} of PM2.5 avoided a year (≈ ${formatNumber(totals.trees)} trees).`,
   );
 }
 

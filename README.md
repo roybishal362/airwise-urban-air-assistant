@@ -14,6 +14,17 @@
 **Demo video (2:40):** https://youtu.be/1Vuj0Vgyci4 (live testing on the deployed app, Gemini in English and Hindi,
 and how the GenAI is grounded in measured data)
 
+**Evidence by judging criterion** (each file lists the facts and the commands that verify them):
+
+| Criterion                   | Evidence                                     | Verified by                                                           |
+| --------------------------- | -------------------------------------------- | --------------------------------------------------------------------- |
+| Code quality                | [CODE_QUALITY.md](CODE_QUALITY.md)           | `npm run lint` (typed ESLint + SonarJS + limits), `npm run typecheck` |
+| Security                    | [SECURITY.md](SECURITY.md)                   | integration tests, CodeQL, `npm audit` (0 vulnerabilities)            |
+| Efficiency                  | [EFFICIENCY.md](EFFICIENCY.md)               | `npm run build` (27.1 KB gzipped UI), cache tests                     |
+| Testing                     | [TESTING.md](TESTING.md)                     | `npm run test:coverage` (409 tests, 100 % lines)                      |
+| Accessibility               | [ACCESSIBILITY.md](ACCESSIBILITY.md)         | axe-core (0 violations) and contrast tests                            |
+| Problem statement alignment | [PROBLEM_ALIGNMENT.md](PROBLEM_ALIGNMENT.md) | every requirement mapped to code and tests                            |
+
 ---
 
 ## Contents
@@ -309,10 +320,10 @@ See [`SECURITY.md`](SECURITY.md) for the full threat model. Highlights:
 
 ### Efficiency
 
-- **No front-end framework; a tiny production build.** Development serves 24 readable ES modules.
+- **No front-end framework; a tiny production build.** Development serves 26 readable ES modules.
   `npm run build` runs [`scripts/build-web.ts`](scripts/build-web.ts) (esbuild): one minified JS bundle and one
   minified CSS file with content-hashed names, and the HTML rewritten to use them. The whole UI is **3 files,
-  26.5 KB gzipped** (HTML 7.6, JS 13.0, CSS 5.9).
+  27.1 KB gzipped** (HTML 7.6, JS 13.6, CSS 5.9).
 - **Cache once, then never again:** hashed `/assets/` files are cached for a year (`immutable`), since a deploy changes
   their names; only the HTML is revalidated. Icons and the manifest are cached for a day.
 - **Measured on the live site** (Chrome, India → Mumbai, 24 Nov 2026):
@@ -336,7 +347,7 @@ See [`SECURITY.md`](SECURITY.md) for the full threat model. Highlights:
   reasoning effort and capped output.
 - **Linear algorithms** (n ≤ 48 hours) and no database.
 
-### Testing: 408 automated tests (Vitest + fast-check + axe-core)
+### Testing: 409 automated tests (Vitest + fast-check + axe-core)
 
 | Suite                                                                                                          | What it proves                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | -------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -353,7 +364,7 @@ See [`SECURITY.md`](SECURITY.md) for the full threat model. Highlights:
 | `tests/integration/process.test.ts`                                                                            | **Spawns the real server process**, waits for its structured log line and calls it over HTTP                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 | `tests/frontend/*.test.ts`                                                                                     | Full UI flows in jsdom (**ARIA tabs**: roving tabindex, Arrow/Home/End with wrap-around, deep links and the back button; landing → app switch, the live-data badge and page titles; search; **every location failure** (blocked permission respected with how-to-allow, network fallback, focus to search); field-level errors, share, read-aloud, chat), XSS-safe rendering, tamper-proof storage, Hindi language tagging, **axe-core audits of the empty and fully rendered page (0 violations, with a self-test)**, and **contrast checks of every theme token pair in light and dark mode** |
 
-Coverage (thresholds enforced in CI on Node 20 and 22): **100 % lines, 99.4 % statements, 99.8 % functions, 95.0 % branches.**
+Coverage (thresholds enforced in CI on Node 20 and 22): **100 % lines, 99.3 % statements, 99.8 % functions, 95.1 % branches.**
 
 ### Accessibility
 
@@ -390,8 +401,9 @@ The design targets WCAG 2.2 AA:
 - **TypeScript `strict`** (plus `noUncheckedIndexedAccess`) on the server; type-checked JSDoc (`// @ts-check`) in the
   browser.
 - **Type-aware linting:** ESLint with `typescript-eslint` `strictTypeChecked` on all server and build TypeScript
-  (no floating promises, no unsafe `any` flows, no deprecated APIs), Prettier, and a CI pipeline: lint → format →
-  typecheck → tests with coverage thresholds → build → audit.
+  (no floating promises, no unsafe `any` flows, no deprecated APIs) and the **SonarJS** rules (bug patterns, cognitive
+  complexity, ReDoS-prone regexes) on all code including tests; Prettier; and a CI pipeline: lint → format →
+  typecheck → tests with coverage thresholds → build → audit. Details in [CODE_QUALITY.md](CODE_QUALITY.md).
 - **Enforced size and complexity limits** on every shipped file, server and browser alike (CI fails on any breach):
   cyclomatic complexity ≤ 10, ≤ 60 lines per function, nesting depth ≤ 3, ≤ 4 parameters (option objects beyond
   that). Long functions are split into small named steps (for example `startApp` is a short composition root over
@@ -489,12 +501,16 @@ vercel.json            CDN headers, /api rewrite, Mumbai region
 public/
   index.html, css/     accessible markup and styles (no inline code)
   js/app.js            composition root (dependency-injected); js/main.js is the 2-line entry
+  js/shell.js          page frame: status line, landing ↔ app view, page title, location bar
   js/controllers/      tabs (ARIA, deep links), search + location fallback, family editor, impact, share/speech, voice
   js/render/           one module per section: AQI dial, glance tiles, family, SVG chart, routine, indoor, impact
   js/community.js      instant client-side community scaling and pledge totals
 scripts/build-web.ts   production UI build: one hashed, minified JS and CSS file (esbuild)
 tests/                 unit, property-based, integration, process and front-end tests + real-data fixtures
 docs/DECISIONS.md      design decisions and red-team log
+CODE_QUALITY.md, SECURITY.md, EFFICIENCY.md, TESTING.md, ACCESSIBILITY.md, PROBLEM_ALIGNMENT.md
+                       evidence for each judging criterion
+.pre-commit-config.yaml  optional local hooks running the CI checks
 ```
 
 ## 11. Data sources and references

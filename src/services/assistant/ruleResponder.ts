@@ -11,9 +11,21 @@ import type { Intent } from './intent.js';
 
 const bullet = (text: string): string => `- ${text}`;
 
+/** How clean a window is, in words (level 1 = good). */
+function windowQuality(level: number): string {
+  if (level <= 1) return 'clean';
+  return level === 2 ? 'fair' : 'still polluted';
+}
+
+/** The most polluted stretch to avoid, or a note that none is forecast. */
+function peakText(worst: AirBrief['forecast']['windows']['worst'], now: string): string {
+  if (!worst) return 'no major peak forecast';
+  return `${windowLabel(worst.start, worst.end, now)} (peak AQI ~${worst.peakAqi})`;
+}
+
 const describeWindow = (w: TimeWindow | null, fallback: string, now: string): string =>
   w
-    ? `${windowLabel(w.start, w.end, now)} (AQI ~${w.averageAqi}, ${w.level <= 1 ? 'clean' : w.level === 2 ? 'fair' : 'still polluted'})`
+    ? `${windowLabel(w.start, w.end, now)} (AQI ~${w.averageAqi}, ${windowQuality(w.level)})`
     : fallback;
 
 function statusAnswer(b: AirBrief): string[] {
@@ -49,9 +61,7 @@ function bestTimeAnswer(b: AirBrief): string[] {
       `Air out the home: ${describeWindow(w.ventilation, 'keep windows shut today', b.observedAt)}.`,
     ),
     bullet(`Children's play: ${describeWindow(w.play, 'indoor play today', b.observedAt)}.`),
-    bullet(
-      `Avoid: ${w.worst ? `${windowLabel(w.worst.start, w.worst.end, b.observedAt)} (peak AQI ~${w.worst.peakAqi})` : 'no major peak forecast'}.`,
-    ),
+    bullet(`Avoid: ${peakText(w.worst, b.observedAt)}.`),
   ];
 }
 

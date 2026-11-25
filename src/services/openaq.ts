@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { MOLAR_VOLUME_L, MOLECULAR_WEIGHT } from '../domain/aqi/calculator.js';
+import { timeSpan } from '../domain/time.js';
 import type { Concentrations, PollutantId, StationInfo, StationSnapshot } from '../domain/types.js';
 import { UpstreamError } from '../lib/errors.js';
 import type { FetchFn } from '../lib/http.js';
@@ -208,11 +209,7 @@ function stationInfo(
   { loc, distanceKm }: Candidate,
   readings: readonly StationReading[],
 ): StationInfo {
-  const latest =
-    readings
-      .map((r) => r.measuredAtLocal)
-      .sort()
-      .at(-1) ?? '';
+  const latest = timeSpan(readings.map((r) => r.measuredAtLocal))?.last ?? '';
   return {
     name: loc.name ?? `Station ${String(loc.id)}`,
     distanceKm: round1(distanceKm),

@@ -12,7 +12,7 @@ const css = readFileSync(path.resolve(process.cwd(), 'public/css/styles.css'), '
 
 function tokens(block: string): Record<string, string> {
   const out: Record<string, string> = {};
-  for (const [, name, value] of block.matchAll(/--([\w-]+):\s*(#[0-9a-fA-F]{6})\s*;/g)) {
+  for (const [, name, value] of block.matchAll(/--(\w[\w-]*):\s*(#[0-9a-fA-F]{6})\s*;/g)) {
     out[name as string] = value as string;
   }
   return out;

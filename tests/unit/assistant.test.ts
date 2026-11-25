@@ -100,7 +100,7 @@ describe('prompt construction', () => {
       household: { healthConditions: ['asthma'], householdsActingTogether: 40 },
     });
     expect(JSON.stringify(facts)).toMatch(/kg CO2/);
-    expect((facts.next24hEvery3h as string[]).length).toBe(8);
+    expect(facts.next24hEvery3h as string[]).toHaveLength(8);
     const noCommute = JSON.parse(briefToContext({ ...brief, commute: null }, household)) as Record<
       string,
       unknown

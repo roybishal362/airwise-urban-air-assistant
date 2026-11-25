@@ -32,7 +32,7 @@ export interface GeminiModelsApi {
     model: string;
     contents: { role: 'user' | 'model'; parts: { text: string }[] }[];
     config: { systemInstruction: string; maxOutputTokens: number; abortSignal?: AbortSignal };
-  }): Promise<{ text?: string | undefined }>;
+  }): Promise<{ text?: string }>;
 }
 
 /** HTTP statuses that mean "this model can't serve right now, try the next one". */

@@ -34,12 +34,12 @@ export interface AppConfig {
   rateLimitPerMinute: number;
   chatRateLimitPerMinute: number;
   /** Free key for measured station data (https://explore.openaq.org/register). */
-  openAqApiKey?: string | undefined;
+  openAqApiKey?: string;
   llm: {
     provider: 'auto' | 'gemini' | 'claude' | 'none';
-    geminiApiKey?: string | undefined;
+    geminiApiKey?: string;
     geminiModel: string;
-    anthropicApiKey?: string | undefined;
+    anthropicApiKey?: string;
     anthropicModel: string;
     timeoutMs: number;
   };

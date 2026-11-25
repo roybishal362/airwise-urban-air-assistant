@@ -1,4 +1,5 @@
 import js from '@eslint/js';
+import sonarjs from 'eslint-plugin-sonarjs';
 import globals from 'globals';
 import tseslint from 'typescript-eslint';
 
@@ -51,6 +52,26 @@ export default tseslint.config(
   {
     files: ['src/**/*.ts', 'scripts/**/*.ts', 'public/js/**/*.js'],
     rules: qualityLimits,
+  },
+  {
+    // SonarJS code-smell and bug-pattern rules (cognitive complexity, ReDoS-prone
+    // regexes, nested conditionals, …) on all code, tests included.
+    files: ['src/**/*.ts', 'scripts/**/*.ts', 'public/js/**/*.js', 'tests/**/*.ts'],
+    ...sonarjs.configs.recommended,
+  },
+  {
+    files: ['src/**/*.ts', 'scripts/**/*.ts', 'public/js/**/*.js', 'tests/**/*.ts'],
+    rules: {
+      // Named aliases such as `LocalTime = string` document a format at every use.
+      'sonarjs/redundant-type-aliases': 'off',
+    },
+  },
+  {
+    files: ['tests/**/*.ts'],
+    rules: {
+      // Tests assert exact results on purpose (EPA truncation, parsed values, rounded figures).
+      'sonarjs/no-floating-point-equality': 'off',
+    },
   },
   {
     // The build script's command-line entry prints the bundle sizes.

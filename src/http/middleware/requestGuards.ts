@@ -40,7 +40,9 @@ function isSameOrigin(req: Request): boolean {
   const site = req.get('sec-fetch-site');
   if (site && site !== 'same-origin' && site !== 'none') return false;
   const origin = req.get('origin');
-  return !origin || hostOf(origin) === req.get('host');
+  if (!origin) return true;
+  const host = req.get('host');
+  return host !== undefined && hostOf(origin) === host;
 }
 
 /** Host of an Origin header, or null when it is malformed (e.g. "null"). */
