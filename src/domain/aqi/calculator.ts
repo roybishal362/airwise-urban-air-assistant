@@ -10,9 +10,10 @@ import {
 import { STANDARDS, type ConcentrationUnit, type PollutantScale } from './standards.js';
 
 /** Molar volume of an ideal gas at 25 °C and 1 atm, in litres. */
-const MOLAR_VOLUME_L = 24.45;
+export const MOLAR_VOLUME_L = 24.45;
 
-const MOLECULAR_WEIGHT: Readonly<Partial<Record<PollutantId, number>>> = {
+/** Molecular weights (g/mol) of the gases whose standards use ppb/ppm. */
+export const MOLECULAR_WEIGHT: Readonly<Partial<Record<PollutantId, number>>> = {
   no2: 46.0055,
   so2: 64.066,
   o3: 47.9982,

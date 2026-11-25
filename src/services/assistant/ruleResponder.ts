@@ -28,7 +28,7 @@ function statusAnswer(b: AirBrief): string[] {
 }
 
 function outdoorAnswer(b: AirBrief): string[] {
-  const lines = [`${b.risk.headline}`];
+  const lines = [b.risk.headline];
   for (const m of b.risk.memberAdvice.slice(0, 4)) lines.push(bullet(`${m.who}: ${m.advice}`));
   lines.push(
     bullet(

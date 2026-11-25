@@ -101,7 +101,10 @@ export async function startServer(
         logger,
         close: () =>
           new Promise<void>((done, fail) =>
-            server.close((error) => (error ? fail(error) : done())),
+            server.close((error) => {
+              if (error) fail(error);
+              else done();
+            }),
           ),
       });
     });
@@ -123,7 +126,11 @@ if (isEntryPoint(import.meta.url, process.argv[1])) {
     // Cloud Run allows 10 s after SIGTERM; never hang past that.
     setTimeout(() => process.exit(1), 8000).unref();
   };
-  process.on('SIGTERM', () => shutdown('SIGTERM'));
-  process.on('SIGINT', () => shutdown('SIGINT'));
+  process.on('SIGTERM', () => {
+    shutdown('SIGTERM');
+  });
+  process.on('SIGINT', () => {
+    shutdown('SIGINT');
+  });
 }
 /* v8 ignore stop */

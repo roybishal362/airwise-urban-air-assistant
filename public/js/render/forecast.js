@@ -27,14 +27,33 @@ const PLOT_W = W - LEFT - RIGHT;
 const PLOT_H = H - TOP - BOTTOM;
 
 /**
+ * Horizontal layout of the plot: the width of one hour, the AQI at the top
+ * of the plot, and the AQI → SVG y mapping.
+ * @typedef {{ step: number, top: number, y: (value: number) => number }} Scale
+ */
+
+/**
+ * Bars fill the width; the top is the worst hour rounded up to 50 (at least 150).
+ * @param {readonly HourlyIndex[]} hours
+ * @returns {Scale}
+ */
+function chartScale(hours) {
+  const top = Math.ceil(Math.max(150, ...hours.map((h) => h.aqi)) / 50) * 50;
+  return {
+    step: PLOT_W / Math.max(hours.length, 1),
+    top,
+    y: (value) => TOP + PLOT_H - (value / top) * PLOT_H,
+  };
+}
+
+/**
  * Highlight band for a time window, with a short label above it.
  * @param {readonly HourlyIndex[]} hours
+ * @param {Scale} scale
  * @param {TimeWindow | null} window
- * @param {number} step
- * @param {string} className
- * @param {string} label
+ * @param {{ className: string, label: string }} look
  */
-function band(hours, window, step, className, label) {
+function band(hours, { step }, window, { className, label }) {
   if (!window) return null;
   const start = hours.findIndex((h) => h.time === window.start);
   if (start < 0) return null;
@@ -56,30 +75,28 @@ function band(hours, window, step, className, label) {
 }
 
 /**
- * Accessible SVG bar chart of the next 24 hours.
- * @param {Brief} brief
+ * A horizontal grid line and label every 100 AQI.
+ * @param {Scale} scale
  */
-export function renderChart(brief) {
-  const { hours, windows } = brief.forecast;
-  const step = PLOT_W / Math.max(hours.length, 1);
-  const top = Math.ceil(Math.max(150, ...hours.map((h) => h.aqi)) / 50) * 50;
-  /** @param {number} v */
-  const y = (v) => TOP + PLOT_H - (v / top) * PLOT_H;
-
+function gridLines({ top, y }) {
   const grid = [];
   for (let v = 100; v < top; v += 100) {
+    const at = y(v).toFixed(1);
     grid.push(
-      svg('line', {
-        class: 'chart-grid',
-        x1: LEFT,
-        x2: W - RIGHT,
-        y1: y(v).toFixed(1),
-        y2: y(v).toFixed(1),
-      }),
+      svg('line', { class: 'chart-grid', x1: LEFT, x2: W - RIGHT, y1: at, y2: at }),
       svg('text', { class: 'chart-label', x: 2, y: (y(v) + 4).toFixed(1) }, String(v)),
     );
   }
-  const bars = hours.map((h, i) =>
+  return grid;
+}
+
+/**
+ * One bar per hour, coloured by its category.
+ * @param {readonly HourlyIndex[]} hours
+ * @param {Scale} scale
+ */
+function hourBars(hours, { step, top, y }) {
+  return hours.map((h, i) =>
     svg('rect', {
       class: `chart-bar lvl-${h.level}`,
       x: (LEFT + i * step + 1.5).toFixed(1),
@@ -89,7 +106,15 @@ export function renderChart(brief) {
       rx: 2,
     }),
   );
-  const labels = hours.flatMap((h, i) =>
+}
+
+/**
+ * Hour labels under every third bar (the first bar is labelled "Now").
+ * @param {readonly HourlyIndex[]} hours
+ * @param {Scale} scale
+ */
+function hourLabels(hours, { step }) {
+  return hours.flatMap((h, i) =>
     i % 3 === 0 && i > 0
       ? [
           svg(
@@ -100,8 +125,29 @@ export function renderChart(brief) {
         ]
       : [],
   );
-  const lowest = hours.reduce((a, b) => (b.aqi < a.aqi ? b : a), hours[0] ?? { time: '', aqi: 0 });
-  const highest = hours.reduce((a, b) => (b.aqi > a.aqi ? b : a), hours[0] ?? { time: '', aqi: 0 });
+}
+
+/**
+ * The chart's text alternative: when the air is cleanest and worst.
+ * @param {readonly HourlyIndex[]} hours
+ * @param {string} observedAt
+ */
+function chartSummary(hours, observedAt) {
+  const first = hours[0] ?? { time: '', aqi: 0 };
+  const lowest = hours.reduce((a, b) => (b.aqi < a.aqi ? b : a), first);
+  const highest = hours.reduce((a, b) => (b.aqi > a.aqi ? b : a), first);
+  /** @param {{ time: string, aqi: number }} h */
+  const at = (h) => `${h.aqi} at ${clock(h.time)}${dayWord(h.time, observedAt)}`;
+  return `Lowest AQI ${at(lowest)}; highest ${at(highest)}.`;
+}
+
+/**
+ * Accessible SVG bar chart of the next 24 hours.
+ * @param {Brief} brief
+ */
+export function renderChart(brief) {
+  const { hours, windows } = brief.forecast;
+  const scale = chartScale(hours);
   return svg(
     'svg',
     {
@@ -111,15 +157,11 @@ export function renderChart(brief) {
       'aria-labelledby': 'chart-title chart-desc',
     },
     svg('title', { id: 'chart-title' }, 'Hourly air quality for the next 24 hours'),
-    svg(
-      'desc',
-      { id: 'chart-desc' },
-      `Lowest AQI ${lowest.aqi} at ${clock(lowest.time)}${dayWord(lowest.time, brief.observedAt)}; highest ${highest.aqi} at ${clock(highest.time)}${dayWord(highest.time, brief.observedAt)}.`,
-    ),
-    grid,
-    band(hours, windows.outdoor, step, 'band-best', 'Cleanest'),
-    band(hours, windows.worst, step, 'band-worst', 'Worst'),
-    bars,
+    svg('desc', { id: 'chart-desc' }, chartSummary(hours, brief.observedAt)),
+    gridLines(scale),
+    band(hours, scale, windows.outdoor, { className: 'band-best', label: 'Cleanest' }),
+    band(hours, scale, windows.worst, { className: 'band-worst', label: 'Worst' }),
+    hourBars(hours, scale),
     svg('line', {
       class: 'now-line',
       x1: LEFT + 0.5,
@@ -128,7 +170,7 @@ export function renderChart(brief) {
       y2: TOP + PLOT_H,
     }),
     svg('text', { class: 'band-label', x: LEFT + 3, y: H - BOTTOM + 14 }, 'Now'),
-    labels,
+    hourLabels(hours, scale),
   );
 }
 

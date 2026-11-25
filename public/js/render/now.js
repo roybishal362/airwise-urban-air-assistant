@@ -2,6 +2,7 @@
 import { el, svg } from '../dom.js';
 import { clock, formatNumber } from '../format.js';
 import { icon } from './icons.js';
+import { stat } from './stat.js';
 
 /** @typedef {import('../../../src/domain/brief.js').AirBrief} Brief */
 
@@ -61,31 +62,16 @@ export function renderGauge(brief) {
 }
 
 /**
- * @param {string} name
- * @param {string} value
- * @param {string} label
- */
-const stat = (name, value, label) =>
-  el(
-    'div',
-    { className: 'stat' },
-    icon(name),
-    el('span', { className: 'stat-value', text: value }),
-    el('span', { className: 'stat-label', text: label }),
-  );
-
-/**
- * "Air right now": dial, relatable exposure figures and pollutant meters.
+ * The dial with today's value, category badge and scale name.
  * @param {Brief} brief
  */
-export function renderNow(brief) {
-  const { current, standard, location, observedAt, forecast, exposure } = brief;
+function gaugeBlock(brief) {
+  const { current, standard } = brief;
   const badge = el('span', { className: 'aqi-badge', text: current.category.label });
   // CSSOM assignment is CSP-safe (no inline style attribute is parsed).
   badge.style.backgroundColor = current.category.color;
   badge.style.color = current.category.textColor;
-
-  const gauge = el(
+  return el(
     'div',
     { className: 'gauge-wrap' },
     renderGauge(brief),
@@ -97,15 +83,22 @@ export function renderNow(brief) {
       el('span', { className: 'aqi-scale', text: standard.shortName }),
     ),
   );
+}
 
+/**
+ * One bar per pollutant, scaled to the worst sub-index (at least 100).
+ * @param {Brief['current']} current
+ */
+function pollutantMeters(current) {
   const maxSub = Math.max(100, ...current.pollutants.map((p) => p.subIndex ?? 0));
-  const meters = el(
+  return el(
     'ul',
     { className: 'pollutant-meters', 'aria-label': 'Pollutants right now' },
     current.pollutants.map((p) => {
       const fill = el('span');
       fill.style.setProperty('--w', `${Math.round(((p.subIndex ?? 0) / maxSub) * 100)}%`);
       const main = p.id === current.dominantPollutant;
+      const amount = formatNumber(p.concentration, 1);
       return el(
         'li',
         {},
@@ -116,55 +109,74 @@ export function renderNow(brief) {
         el('span', { className: 'meter', 'aria-hidden': 'true' }, fill),
         el('span', {
           className: 'meter-value',
-          text: `${formatNumber(p.concentration, 1)} µg/m³`,
-          'aria-label': `${formatNumber(p.concentration, 1)} micrograms per cubic metre, sub-index ${p.subIndex ?? 'not available'}`,
+          text: `${amount} µg/m³`,
+          'aria-label': `${amount} micrograms per cubic metre, sub-index ${p.subIndex ?? 'not available'}`,
         }),
       );
     }),
   );
+}
 
-  return [
-    el(
-      'div',
-      { className: 'now-grid' },
-      gauge,
-      el(
-        'div',
-        {},
-        el('p', {
-          className: 'place-line',
-          text: `${location.name} · updated ${clock(observedAt)} local time`,
-        }),
-        el(
-          'p',
-          { className: `source-line source-${brief.dataSource.kind}` },
-          icon(brief.dataSource.kind === 'station' ? 'check' : 'alert'),
-          el('span', { text: brief.dataSource.label }),
-        ),
-        el('p', { className: 'now-meaning', text: current.category.meaning }),
-        el(
-          'div',
-          { className: 'stat-tiles' },
-          stat(
-            'cigarette',
-            `≈ ${formatNumber(exposure.cigarettesPerDay, 1)}`,
-            'cigarettes a day, breathing this air',
-          ),
-          stat('globe', `${formatNumber(exposure.whoMultiple, 1)}×`, 'the WHO daily PM2.5 limit'),
-          stat(
-            'wind',
-            current.dominantLabel.split(' (')[0] ?? current.dominantLabel,
-            'main pollutant now',
-          ),
-        ),
-        forecast.trend
-          ? el('p', {
-              className: 'trend',
-              text: `Next ${forecast.trend.lookaheadHours} hours: ${forecast.trend.direction} (AQI ${forecast.trend.now} → ~${forecast.trend.next}).`,
-            })
-          : null,
-      ),
+/**
+ * Relatable figures: cigarettes, multiple of the WHO limit, main pollutant.
+ * @param {Brief} brief
+ */
+function statTiles({ current, exposure }) {
+  return el(
+    'div',
+    { className: 'stat-tiles' },
+    stat(
+      'cigarette',
+      `≈ ${formatNumber(exposure.cigarettesPerDay, 1)}`,
+      'cigarettes a day, breathing this air',
     ),
-    meters,
+    stat('globe', `${formatNumber(exposure.whoMultiple, 1)}×`, 'the WHO daily PM2.5 limit'),
+    stat(
+      'wind',
+      current.dominantLabel.split(' (')[0] ?? current.dominantLabel,
+      'main pollutant now',
+    ),
+  );
+}
+
+/**
+ * Where and when, the data source, what the level means, and the trend.
+ * @param {Brief} brief
+ */
+function summary(brief) {
+  const { current, location, observedAt, forecast, dataSource } = brief;
+  const { trend } = forecast;
+  return el(
+    'div',
+    {},
+    el('p', {
+      className: 'place-line',
+      text: `${location.name} · updated ${clock(observedAt)} local time`,
+    }),
+    el(
+      'p',
+      { className: `source-line source-${dataSource.kind}` },
+      icon(dataSource.kind === 'station' ? 'check' : 'alert'),
+      el('span', { text: dataSource.label }),
+    ),
+    el('p', { className: 'now-meaning', text: current.category.meaning }),
+    statTiles(brief),
+    trend
+      ? el('p', {
+          className: 'trend',
+          text: `Next ${trend.lookaheadHours} hours: ${trend.direction} (AQI ${trend.now} → ~${trend.next}).`,
+        })
+      : null,
+  );
+}
+
+/**
+ * "Air right now": dial, relatable exposure figures and pollutant meters.
+ * @param {Brief} brief
+ */
+export function renderNow(brief) {
+  return [
+    el('div', { className: 'now-grid' }, gaugeBlock(brief), summary(brief)),
+    pollutantMeters(brief.current),
   ];
 }

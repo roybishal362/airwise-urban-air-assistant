@@ -2,6 +2,14 @@
 
 /** Thin client for the AirWise API with timeouts and friendly error messages. */
 
+/**
+ * @typedef {import('./storage.js').Place} Place
+ * @typedef {import('../../src/domain/brief.js').AirBrief} AirBrief
+ * @typedef {import('./chat.js').ChatAnswer} ChatAnswer
+ * @typedef {{ status?: string, assistant?: string }} Health
+ * @typedef {{ error?: { message?: string, code?: string } }} ErrorBody
+ */
+
 export class ApiError extends Error {
   /**
    * @param {string} message
@@ -16,36 +24,51 @@ export class ApiError extends Error {
   }
 }
 
+const NETWORK_ERROR = 'Could not reach AirWise. Check your connection and try again.';
+const GENERIC_ERROR = 'Something went wrong. Please try again.';
+
+/** @param {RequestInit} init */
+const jsonHeaders = (init) => ({
+  accept: 'application/json',
+  ...(init.body ? { 'content-type': 'application/json' } : {}),
+});
+
+/**
+ * fetch, with a failure to connect (offline, DNS, timeout) as a friendly ApiError.
+ * @param {typeof fetch} fetchFn @param {string} url @param {RequestInit} init
+ */
+async function send(fetchFn, url, init) {
+  try {
+    return await fetchFn(url, init);
+  } catch {
+    throw new ApiError(NETWORK_ERROR, 0, 'NETWORK');
+  }
+}
+
+/**
+ * The server's `{ error: { code, message } }` envelope as an ApiError.
+ * @param {number} status @param {unknown} data  parsed body, or null when it was not JSON
+ */
+function errorFrom(status, data) {
+  const error = /** @type {ErrorBody | null} */ (data)?.error;
+  return new ApiError(error?.message ?? GENERIC_ERROR, status, error?.code ?? 'HTTP_ERROR');
+}
+
 /**
  * @param {string} url
  * @param {RequestInit & { timeoutMs?: number }} [options]
  * @param {typeof fetch} [fetchFn]
- * @returns {Promise<any>}
+ * @returns {Promise<unknown>}  the parsed JSON body; each endpoint function below types it
  */
 export async function requestJson(url, options = {}, fetchFn = fetch) {
   const { timeoutMs = 25_000, ...init } = options;
-  let response;
-  try {
-    response = await fetchFn(url, {
-      ...init,
-      headers: {
-        accept: 'application/json',
-        ...(init.body ? { 'content-type': 'application/json' } : {}),
-      },
-      signal: AbortSignal.timeout(timeoutMs),
-    });
-  } catch {
-    throw new ApiError(
-      'Could not reach AirWise. Check your connection and try again.',
-      0,
-      'NETWORK',
-    );
-  }
+  const response = await send(fetchFn, url, {
+    ...init,
+    headers: jsonHeaders(init),
+    signal: AbortSignal.timeout(timeoutMs),
+  });
   const data = await response.json().catch(() => null);
-  if (!response.ok) {
-    const message = data?.error?.message ?? 'Something went wrong. Please try again.';
-    throw new ApiError(message, response.status, data?.error?.code ?? 'HTTP_ERROR');
-  }
+  if (!response.ok) throw errorFrom(response.status, data);
   return data;
 }
 
@@ -54,7 +77,8 @@ export async function requestJson(url, options = {}, fetchFn = fetch) {
  * @param {typeof fetch} [fetchFn]
  */
 export async function searchPlaces(query, fetchFn) {
-  const data = await requestJson(`/api/places?q=${encodeURIComponent(query)}`, {}, fetchFn);
+  const url = `/api/places?q=${encodeURIComponent(query)}`;
+  const data = /** @type {{ places: Place[] }} */ (await requestJson(url, {}, fetchFn));
   return data.places;
 }
 
@@ -64,23 +88,23 @@ export async function searchPlaces(query, fetchFn) {
  * @param {typeof fetch} [fetchFn]
  */
 export async function fetchBrief(payload, fetchFn) {
-  const data = await requestJson(
-    '/api/brief',
-    { method: 'POST', body: JSON.stringify(payload) },
-    fetchFn,
-  );
+  const init = { method: 'POST', body: JSON.stringify(payload) };
+  const data = /** @type {{ brief: AirBrief }} */ (await requestJson('/api/brief', init, fetchFn));
   return data.brief;
 }
 
 /**
  * @param {object} payload
  * @param {typeof fetch} [fetchFn]
+ * @returns {Promise<ChatAnswer>}
  */
-export function sendChat(payload, fetchFn) {
-  return requestJson(
-    '/api/chat',
-    { method: 'POST', body: JSON.stringify(payload), timeoutMs: 40_000 },
-    fetchFn,
+export async function sendChat(payload, fetchFn) {
+  return /** @type {ChatAnswer} */ (
+    await requestJson(
+      '/api/chat',
+      { method: 'POST', body: JSON.stringify(payload), timeoutMs: 40_000 },
+      fetchFn,
+    )
   );
 }
 
@@ -88,14 +112,17 @@ export function sendChat(payload, fetchFn) {
  * City-level area from the server (the host's IP geolocation), used only when
  * the device cannot locate itself.
  * @param {typeof fetch} [fetchFn]
- * @returns {Promise<import('./storage.js').Place>}
+ * @returns {Promise<Place>}
  */
 export async function locateApproximately(fetchFn) {
-  const data = await requestJson('/api/locate', {}, fetchFn);
+  const data = /** @type {{ place: Place }} */ (await requestJson('/api/locate', {}, fetchFn));
   return data.place;
 }
 
-/** @param {typeof fetch} [fetchFn] */
-export function fetchHealth(fetchFn) {
-  return requestJson('/api/health', {}, fetchFn);
+/**
+ * @param {typeof fetch} [fetchFn]
+ * @returns {Promise<Health>}
+ */
+export async function fetchHealth(fetchFn) {
+  return /** @type {Health} */ (await requestJson('/api/health', {}, fetchFn));
 }

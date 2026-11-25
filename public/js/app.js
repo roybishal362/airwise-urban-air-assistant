@@ -7,8 +7,9 @@ import { setupSearch } from './controllers/search.js';
 import { setupShare } from './controllers/share.js';
 import { setupTabs } from './controllers/tabs.js';
 import { setupVoice } from './controllers/voice.js';
-import { byId, el, replaceChildren } from './dom.js';
+import { byId } from './dom.js';
 import { renderBrief } from './render/index.js';
+import { createShell } from './shell.js';
 import { loadPlace, loadProfile, savePlace, saveProfile } from './storage.js';
 
 /**
@@ -72,114 +73,30 @@ function collectTargets() {
   };
 }
 
+/** @param {unknown} error */
+const errorMessage = (error) =>
+  error instanceof defaultApi.ApiError ? error.message : 'Something went wrong. Please try again.';
+
 /**
- * Compose the UI: state, the plan loader and every controller. All browser
- * capabilities are injectable so the whole flow is testable in jsdom.
- * @param {AppOptions} [options]
+ * @typedef {ReturnType<typeof resolveEnvironment>} Environment
+ * @typedef {{ profile: Profile, place: Place | null, brief: AirBrief | null }} AppState
+ * @typedef {import('./shell.js').Shell} Shell
+ * @typedef {ReturnType<typeof setupTabs>} Tabs
  */
-export function startApp(options = {}) {
-  const env = resolveEnvironment(options);
-  const status = byId('status', HTMLParagraphElement);
+
+/**
+ * The plan loader: fetch the brief for the chosen place and family, render
+ * every tab, and update the shell.
+ * @param {{ env: Environment, state: AppState, shell: Shell, tabs: Tabs, pledged: ReadonlySet<string>, onLoaded: () => void }} ctx
+ */
+function createPlanLoader({ env, state, shell, tabs, pledged, onLoaded }) {
   const results = byId('results', HTMLDivElement);
-  const placeInput = byId('place-input', HTMLInputElement);
-  const currentPlace = byId('current-place', HTMLParagraphElement);
-  const locationAqi = byId('location-aqi', HTMLSpanElement);
-  const landing = byId('landing', HTMLElement);
-  const howItWorks = byId('how-it-works', HTMLUListElement);
-  const changeCity = byId('change-city', HTMLButtonElement);
   const targets = collectTargets();
-  const appTitle = document.title;
-  /** @type {(tabId: string) => void} */
-  let onTabChange = () => {};
-  const tabs = setupTabs({
-    tablist: /** @type {HTMLElement} */ (document.querySelector('[role="tablist"]')),
-    onChange: (tabId) => onTabChange(tabId),
-  });
-  const hadProfile = env.storage.getItem('airwise.profile.v1') !== null;
-  const state = {
-    profile: loadProfile(env.storage),
-    /** @type {Place | null} */ place: loadPlace(env.storage),
-    /** @type {AirBrief | null} */ brief: null,
-  };
-
-  /** @param {string} message @param {'info' | 'error'} [kind] */
-  function setStatus(message, kind = 'info') {
-    // Errors are announced assertively, progress politely.
-    status.setAttribute('aria-live', kind === 'error' ? 'assertive' : 'polite');
-    status.textContent = message;
-    status.dataset.kind = kind;
-  }
-
-  /** @param {unknown} error */
-  const errorMessage = (error) =>
-    error instanceof defaultApi.ApiError
-      ? error.message
-      : 'Something went wrong. Please try again.';
-
-  function showCurrentPlace() {
-    if (!state.place) return;
-    replaceChildren(currentPlace, 'Plan for ', el('strong', { text: state.place.name }));
-  }
-
-  /**
-   * Swap the landing page for the tabbed app once a plan exists.
-   * @param {boolean} showApp
-   */
-  function setView(showApp) {
-    document.body.dataset.view = showApp ? 'app' : 'landing';
-    landing.hidden = showApp;
-    howItWorks.hidden = showApp;
-    changeCity.setAttribute('aria-expanded', String(!showApp));
-  }
-  setView(false);
-
-  /**
-   * In a single-page app the title is how screen-reader users (and browser
-   * tabs/history) know where they are: "Forecast · Delhi · AirWise".
-   * @param {string} tabId
-   */
-  function updateTitle(tabId = tabs.current()) {
-    if (!state.brief || !state.place) {
-      document.title = appTitle;
-      return;
-    }
-    const tab = document.getElementById(`tab-${tabId}`)?.textContent?.trim() ?? '';
-    document.title = [tab, state.place.name, 'AirWise'].filter(Boolean).join(' · ');
-  }
-  onTabChange = updateTitle;
-
-  /** @param {AirBrief} brief */
-  function showLocationAqi(brief) {
-    locationAqi.textContent = `${brief.standard.shortName} ${brief.current.aqi} · ${brief.current.category.label}`;
-    // CSSOM assignment is CSP-safe.
-    locationAqi.style.backgroundColor = brief.current.category.color;
-    locationAqi.style.color = brief.current.category.textColor;
-    const source = byId('location-source', HTMLSpanElement);
-    const live = brief.dataSource.kind === 'station';
-    // The "live" dot is drawn in CSS so screen readers don't read "black circle".
-    source.textContent = live ? 'Live station data' : 'Model estimate';
-    source.classList.toggle('is-live', live);
-  }
-
-  const impact = setupImpactControls({
-    container: targets.impact,
-    storage: env.storage,
-    getBrief: () => state.brief,
-    setBrief: (brief) => {
-      state.brief = brief;
-    },
-    onHouseholdsChange: (households) => {
-      state.profile.household.communityHouseholds = households;
-      saveProfile(env.storage, state.profile);
-      profile.renderSummary();
-    },
-  });
-
   /** @param {{ focusResults?: boolean }} [opts] */
-  async function loadBrief({ focusResults = false } = {}) {
-    if (!state.place) return;
+  return async function loadBrief({ focusResults = false } = {}) {
     const place = state.place;
-    setStatus(`Fetching live air and weather data for ${place.name}…`);
+    if (!place) return;
+    shell.setStatus(`Fetching live air and weather data for ${place.name}…`);
     results.setAttribute('aria-busy', 'true');
     try {
       /** @type {AirBrief} */
@@ -189,52 +106,34 @@ export function startApp(options = {}) {
         household: state.profile.household,
       });
       state.brief = brief;
-      renderBrief(brief, targets, impact.pledged);
-      document.body.dataset.aqiLevel = String(brief.current.category.level);
-      showLocationAqi(brief);
+      renderBrief(brief, targets, pledged);
+      shell.showAqi(brief);
       results.hidden = false;
-      setView(true);
-      updateTitle();
-      setStatus(
-        `Plan ready for ${place.name}: ${brief.current.category.label}, AQI ${brief.current.aqi}.`,
-      );
+      shell.setView(true);
+      onLoaded();
+      const { category, aqi } = brief.current;
+      shell.setStatus(`Plan ready for ${place.name}: ${category.label}, AQI ${String(aqi)}.`);
       if (focusResults) tabs.select('today', { focus: 'panel' });
     } catch (error) {
-      setStatus(errorMessage(error), 'error');
+      shell.setStatus(errorMessage(error), 'error');
     } finally {
       results.setAttribute('aria-busy', 'false');
     }
-  }
+  };
+}
 
-  /** @param {Place} place */
-  function choosePlace(place) {
-    state.place = place;
-    savePlace(env.storage, place);
-    showCurrentPlace();
-    return loadBrief({ focusResults: true });
-  }
-
-  setupSearch({
-    ui: {
-      form: byId('place-form', HTMLFormElement),
-      input: placeInput,
-      results: byId('place-results', HTMLUListElement),
-      geoButton: byId('geo-button', HTMLButtonElement),
-      cityButtons: document.querySelectorAll('.chip-city'),
-    },
-    searchPlaces: env.api.searchPlaces,
-    choosePlace,
-    setStatus,
-    errorMessage,
-    geolocation: env.geolocation,
-    locateApproximately: env.api.locateApproximately,
-  });
-
+/**
+ * The family editor: saving reloads the plan (or asks for a city first).
+ * @param {{ env: Environment, state: AppState, shell: Shell, loadBrief: (opts?: { focusResults?: boolean }) => Promise<void> }} ctx
+ */
+function setupFamily({ env, state, shell, loadBrief }) {
+  const hadProfile = env.storage.getItem('airwise.profile.v1') !== null;
+  const hint = byId('family-hint', HTMLParagraphElement);
   const profile = setupProfile({
     ui: {
       form: byId('profile-form', HTMLFormElement),
       summary: byId('family-summary', HTMLUListElement),
-      hint: byId('family-hint', HTMLParagraphElement),
+      hint,
       error: byId('profile-error', HTMLParagraphElement),
     },
     storage: env.storage,
@@ -243,32 +142,37 @@ export function startApp(options = {}) {
       state.profile = next;
     },
     onSaved: () => {
-      if (state.place) void loadBrief({ focusResults: true });
-      else {
-        setStatus('Profile saved. Now choose your city above.');
-        placeInput.focus();
+      if (state.place) {
+        void loadBrief({ focusResults: true });
+        return;
       }
+      shell.setStatus('Profile saved. Now choose your city above.');
+      shell.focusSearch();
     },
   });
   if (!hadProfile) {
-    byId('family-hint', HTMLParagraphElement).textContent =
+    hint.textContent =
       'Showing a sample family. Tap “Edit family” to match yours: it changes every recommendation.';
   }
+  return profile;
+}
 
-  setupShare({
-    shareButton: byId('share-button', HTMLButtonElement),
-    speakButton: byId('speak-button', HTMLButtonElement),
-    getBrief: () => state.brief,
-    setStatus,
-    share: env.share,
-    clipboard: env.clipboard,
-    speech: env.speech,
-  });
+/** @param {string | undefined} assistant */
+const assistantModeText = (assistant) =>
+  assistant === 'rules'
+    ? 'Running in offline mode: answers come from AirWise rules using your live data.'
+    : `Powered by ${assistant === 'gemini' ? 'Google Gemini' : 'Claude'}, grounded in your live air data. Your household details are sent without any names.`;
 
+/**
+ * The assistant: chat, voice input and the "which engine answers" line.
+ * @param {{ env: Environment, state: AppState, shell: Shell }} ctx
+ */
+function setupAssistant({ env, state, shell }) {
+  const input = byId('chat-input', HTMLTextAreaElement);
   const chat = createChat({
     log: byId('chat-log', HTMLDivElement),
     form: byId('chat-form', HTMLFormElement),
-    input: byId('chat-input', HTMLTextAreaElement),
+    input,
     suggestions: byId('chat-suggestions', HTMLDivElement),
     send: (message, history) =>
       env.api.sendChat({
@@ -280,45 +184,121 @@ export function startApp(options = {}) {
       }),
     canSend: () => state.place !== null,
     onBlocked: () => {
-      setStatus('Choose your city first so answers use your local air data.', 'error');
-      placeInput.focus();
+      shell.setStatus('Choose your city first so answers use your local air data.', 'error');
+      shell.focusSearch();
     },
   });
   chat.showSuggestions(INITIAL_SUGGESTIONS);
-
   setupVoice({
     button: byId('voice-button', HTMLButtonElement),
-    input: byId('chat-input', HTMLTextAreaElement),
+    input,
     onTranscript: (text) => void chat.ask(text),
-    setStatus,
+    setStatus: shell.setStatus,
     Recognition: env.Recognition,
   });
-
   const health = env.api
     .fetchHealth()
     .then((info) => {
-      byId('chat-mode', HTMLParagraphElement).textContent =
-        info.assistant === 'rules'
-          ? 'Running in offline mode: answers come from AirWise rules using your live data.'
-          : `Powered by ${info.assistant === 'gemini' ? 'Google Gemini' : 'Claude'}, grounded in your live air data. Your household details are sent without any names.`;
+      byId('chat-mode', HTMLParagraphElement).textContent = assistantModeText(info.assistant);
     })
     .catch(() => undefined);
+  return { chat, health };
+}
 
-  changeCity.addEventListener('click', () => {
-    const opening = landing.hidden;
-    landing.hidden = !opening;
-    changeCity.setAttribute('aria-expanded', String(opening));
-    if (opening) placeInput.focus();
+/**
+ * City search, the city chips and "use my location".
+ * @param {{ env: Environment, shell: Shell, choosePlace: (place: Place) => Promise<void> }} ctx
+ */
+function setupPlaceSearch({ env, shell, choosePlace }) {
+  setupSearch({
+    ui: {
+      form: byId('place-form', HTMLFormElement),
+      input: byId('place-input', HTMLInputElement),
+      results: byId('place-results', HTMLUListElement),
+      geoButton: byId('geo-button', HTMLButtonElement),
+      cityButtons: document.querySelectorAll('.chip-city'),
+    },
+    searchPlaces: env.api.searchPlaces,
+    choosePlace,
+    setStatus: shell.setStatus,
+    errorMessage,
+    geolocation: env.geolocation,
+    locateApproximately: env.api.locateApproximately,
+  });
+}
+
+/**
+ * Share the plan, or read it aloud.
+ * @param {{ env: Environment, state: AppState, shell: Shell }} ctx
+ */
+function setupSharing({ env, state, shell }) {
+  setupShare({
+    shareButton: byId('share-button', HTMLButtonElement),
+    speakButton: byId('speak-button', HTMLButtonElement),
+    getBrief: () => state.brief,
+    setStatus: shell.setStatus,
+    share: env.share,
+    clipboard: env.clipboard,
+    speech: env.speech,
+  });
+}
+
+/**
+ * Compose the UI: state, the shell, tabs, the plan loader and every
+ * controller. All browser capabilities are injectable so the whole flow is
+ * testable in jsdom.
+ * @param {AppOptions} [options]
+ */
+export function startApp(options = {}) {
+  const env = resolveEnvironment(options);
+  const shell = createShell();
+  /** @type {AppState} */
+  const state = { profile: loadProfile(env.storage), place: loadPlace(env.storage), brief: null };
+  /** @param {string} tabId */
+  const updateTitle = (tabId) => {
+    const section = document.getElementById(`tab-${tabId}`)?.textContent?.trim() ?? '';
+    shell.setTitle(section, state.brief && state.place ? state.place.name : null);
+  };
+  const tabs = setupTabs({
+    tablist: /** @type {HTMLElement} */ (document.querySelector('[role="tablist"]')),
+    onChange: updateTitle,
+  });
+  const impact = setupImpactControls({
+    container: byId('impact-body', HTMLDivElement),
+    storage: env.storage,
+    getBrief: () => state.brief,
+    setBrief: (brief) => {
+      state.brief = brief;
+    },
+    onHouseholdsChange: (households) => {
+      state.profile.household.communityHouseholds = households;
+      saveProfile(env.storage, state.profile);
+      profile.renderSummary();
+    },
+  });
+  const loadBrief = createPlanLoader({
+    env,
+    state,
+    shell,
+    tabs,
+    pledged: impact.pledged,
+    onLoaded: () => updateTitle(tabs.current()),
   });
 
-  showCurrentPlace();
+  /** @param {Place} place */
+  function choosePlace(place) {
+    state.place = place;
+    savePlace(env.storage, place);
+    shell.showPlace(place);
+    return loadBrief({ focusResults: true });
+  }
+
+  setupPlaceSearch({ env, shell, choosePlace });
+  const profile = setupFamily({ env, state, shell, loadBrief });
+  setupSharing({ env, state, shell });
+  const { chat, health } = setupAssistant({ env, state, shell });
+
+  if (state.place) shell.showPlace(state.place);
   const initialLoad = loadBrief();
-  return {
-    state,
-    chat,
-    tabs,
-    loadBrief,
-    choosePlace,
-    ready: Promise.all([health, initialLoad]),
-  };
+  return { state, chat, tabs, loadBrief, choosePlace, ready: Promise.all([health, initialLoad]) };
 }

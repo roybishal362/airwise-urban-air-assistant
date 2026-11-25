@@ -54,14 +54,24 @@ function choice(form, name, label) {
  */
 const checked = (form, name) => /** @type {HTMLInputElement} */ (field(form, name)).checked;
 
+/** Valid range and display name of each numeric field. */
+const NUMBER_FIELDS = {
+  adults: { min: 0, max: 20, label: 'Adults' },
+  children: { min: 0, max: 20, label: 'Children' },
+  seniors: { min: 0, max: 20, label: 'Older adults' },
+  roomAreaSqm: { min: 4, max: 200, label: 'Room size' },
+  purifierCadrM3h: { min: 0, max: 2000, label: 'Purifier CADR' },
+  commuteKm: { min: 0, max: 200, label: 'Commute distance' },
+  communityHouseholds: { min: 1, max: 10_000, label: 'Households acting together' },
+};
+
 /**
+ * A required number within its field's range.
  * @param {HTMLFormElement} form
- * @param {string} name
- * @param {number} min
- * @param {number} max
- * @param {string} label
+ * @param {keyof typeof NUMBER_FIELDS} name
  */
-function number(form, name, min, max, label) {
+function number(form, name) {
+  const { min, max, label } = NUMBER_FIELDS[name];
   const input = field(form, name);
   const value = Number(input.value);
   if (input.value.trim() === '' || !Number.isFinite(value) || value < min || value > max) {
@@ -77,9 +87,9 @@ function number(form, name, min, max, label) {
  */
 export function readProfile(form) {
   const members = {
-    adults: number(form, 'adults', 0, 20, 'Adults'),
-    children: number(form, 'children', 0, 20, 'Children'),
-    seniors: number(form, 'seniors', 0, 20, 'Older adults'),
+    adults: number(form, 'adults'),
+    children: number(form, 'children'),
+    seniors: number(form, 'seniors'),
   };
   if (members.adults + members.children + members.seniors < 1) {
     throw new FieldError('adults', 'Add at least one person to your household.');
@@ -95,23 +105,19 @@ export function readProfile(form) {
       members,
       conditions,
       home: {
-        roomAreaSqm: number(form, 'roomAreaSqm', 4, 200, 'Room size'),
+        roomAreaSqm: number(form, 'roomAreaSqm'),
         hasAirPurifier,
-        purifierCadrM3h: hasAirPurifier
-          ? number(form, 'purifierCadrM3h', 0, 2000, 'Purifier CADR')
-          : 0,
+        purifierCadrM3h: hasAirPurifier ? number(form, 'purifierCadrM3h') : 0,
       },
       lifestyle: {
         commuteMode: choice(form, 'commuteMode', 'commute'),
-        commuteKm: number(form, 'commuteKm', 0, 200, 'Commute distance'),
+        commuteKm: number(form, 'commuteKm'),
         workFromHomePossible: checked(form, 'workFromHomePossible'),
         cookingFuel: choice(form, 'cookingFuel', 'cooking fuel'),
         heating: choice(form, 'heating', 'winter heating'),
         exercisesOutdoors: checked(form, 'exercisesOutdoors'),
       },
-      communityHouseholds: Math.round(
-        number(form, 'communityHouseholds', 1, 10_000, 'Households acting together'),
-      ),
+      communityHouseholds: Math.round(number(form, 'communityHouseholds')),
     },
   };
 }

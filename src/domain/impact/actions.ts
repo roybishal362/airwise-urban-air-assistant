@@ -36,75 +36,87 @@ const scale = (q: Quantity, factor: number): Quantity => ({
 
 type Draft = Omit<SustainableAction, 'community'>;
 
+const perYear = (weekly: number): number => round(weekly * WORK_WEEKS_PER_YEAR, 0);
+const perWorkdayYear = (weekly: number): number => perYear(weekly / WORK_DAYS_PER_WEEK);
+const isPresent = <T>(value: T | null): value is T => value !== null;
+
+/** Switch to the best alternative that is safe to use today (EVs are a purchase, not a switch). */
+function switchCommuteAction(commute: CommuteComparison): Draft | null {
+  const best = commute.alternatives.find((a) => a.mode !== 'ev_car' && a.suitableToday);
+  if (!best || best.co2SavedKgPerYear <= 0) return null;
+  const { current } = commute;
+  return {
+    id: 'switch-commute',
+    title: `Commute by ${best.label.toLowerCase()} instead of ${current.label.toLowerCase()}`,
+    category: 'transport',
+    detail: best.note,
+    perHousehold: {
+      co2KgPerYear: best.co2SavedKgPerYear,
+      pm25GPerYear: Math.max(perYear(current.pm25EmittedGPerWeek - best.pm25EmittedGPerWeek), 0),
+      noxGPerYear: Math.max(perYear(current.noxGPerWeek - best.noxGPerWeek), 0),
+    },
+    impactStatement: `Avoids ~${String(best.co2SavedKgPerYear)} kg CO₂ a year (what ~${String(treesEquivalent(best.co2SavedKgPerYear))} trees absorb) and changes the PM2.5 you inhale on the commute by ${signedPercent(best.inhaledChangePct)}.`,
+  };
+}
+
+function workFromHomeAction(
+  household: Household,
+  commute: CommuteComparison,
+  region: Region,
+): Draft | null {
+  if (!household.lifestyle.workFromHomePossible) return null;
+  const { current } = commute;
+  const co2 = perWorkdayYear(current.co2KgPerWeek);
+  return {
+    id: 'wfh-day',
+    title: 'Work from home one day a week (every day during smog alerts)',
+    category: 'transport',
+    detail: region.isDelhiNcr
+      ? "Under GRAP Stage IV, Delhi-NCR offices can be told to halve attendance: you'll be ready."
+      : 'Home-working on the worst smog days cuts both traffic and your own exposure.',
+    perHousehold: {
+      co2KgPerYear: co2,
+      pm25GPerYear: perWorkdayYear(current.pm25EmittedGPerWeek),
+      noxGPerYear: perWorkdayYear(current.noxGPerWeek),
+    },
+    impactStatement: `Avoids ~${String(co2)} kg CO₂ a year and removes ${String(current.inhaledPm25UgPerDay)} µg of inhaled PM2.5 on each home-working day.`,
+  };
+}
+
+function noIdlingAction(household: Household, region: Region): Draft | null {
+  const mode = household.lifestyle.commuteMode;
+  if (!isCar(mode) && mode !== 'two_wheeler') return null;
+  const f = ACTION_FACTORS;
+  const litresPerHour =
+    mode === 'two_wheeler' ? f.twoWheelerIdleLitresPerHour : f.carIdleLitresPerHour;
+  const workDays = WORK_DAYS_PER_WEEK * WORK_WEEKS_PER_YEAR;
+  const co2 = round(
+    (f.idleMinutesPerDay / 60) * litresPerHour * f.petrolCo2KgPerLitre * workDays,
+    0,
+  );
+  return {
+    id: 'no-idling',
+    title: 'Switch off the engine at signals longer than 10 seconds',
+    category: 'transport',
+    detail: region.isIndia
+      ? 'Delhi\'s "Red Light On, Gaadi Off" campaign targets exactly this.'
+      : 'Idling engines put exhaust right where pedestrians and cyclists breathe.',
+    perHousehold: { co2KgPerYear: co2, pm25GPerYear: null, noxGPerYear: null },
+    impactStatement: `Skipping ~${String(f.idleMinutesPerDay)} min of idling a day saves ~${String(co2)} kg CO₂ a year and keeps exhaust away from pedestrians at junctions.`,
+  };
+}
+
 function commuteActions(
   household: Household,
   commute: CommuteComparison | null,
   region: Region,
 ): Draft[] {
   if (!commute) return [];
-  const drafts: Draft[] = [];
-  const perYear = (weekly: number): number => round(weekly * WORK_WEEKS_PER_YEAR, 0);
-  const perWorkdayYear = (weekly: number): number => perYear(weekly / WORK_DAYS_PER_WEEK);
-
-  const best = commute.alternatives.find((a) => a.mode !== 'ev_car' && a.suitableToday);
-  if (best && best.co2SavedKgPerYear > 0) {
-    drafts.push({
-      id: 'switch-commute',
-      title: `Commute by ${best.label.toLowerCase()} instead of ${commute.current.label.toLowerCase()}`,
-      category: 'transport',
-      detail: best.note,
-      perHousehold: {
-        co2KgPerYear: best.co2SavedKgPerYear,
-        pm25GPerYear: Math.max(
-          perYear(commute.current.pm25EmittedGPerWeek - best.pm25EmittedGPerWeek),
-          0,
-        ),
-        noxGPerYear: Math.max(perYear(commute.current.noxGPerWeek - best.noxGPerWeek), 0),
-      },
-      impactStatement: `Avoids ~${best.co2SavedKgPerYear} kg CO₂ a year (what ~${treesEquivalent(best.co2SavedKgPerYear)} trees absorb) and changes the PM2.5 you inhale on the commute by ${signedPercent(best.inhaledChangePct)}.`,
-    });
-  }
-
-  if (household.lifestyle.workFromHomePossible) {
-    const co2 = perWorkdayYear(commute.current.co2KgPerWeek);
-    drafts.push({
-      id: 'wfh-day',
-      title: 'Work from home one day a week (every day during smog alerts)',
-      category: 'transport',
-      detail: region.isDelhiNcr
-        ? "Under GRAP Stage IV, Delhi-NCR offices can be told to halve attendance: you'll be ready."
-        : 'Home-working on the worst smog days cuts both traffic and your own exposure.',
-      perHousehold: {
-        co2KgPerYear: co2,
-        pm25GPerYear: perWorkdayYear(commute.current.pm25EmittedGPerWeek),
-        noxGPerYear: perWorkdayYear(commute.current.noxGPerWeek),
-      },
-      impactStatement: `Avoids ~${co2} kg CO₂ a year and removes ${commute.current.inhaledPm25UgPerDay} µg of inhaled PM2.5 on each home-working day.`,
-    });
-  }
-
-  const mode = household.lifestyle.commuteMode;
-  if (isCar(mode) || mode === 'two_wheeler') {
-    const f = ACTION_FACTORS;
-    const litresPerHour =
-      mode === 'two_wheeler' ? f.twoWheelerIdleLitresPerHour : f.carIdleLitresPerHour;
-    const workDays = WORK_DAYS_PER_WEEK * WORK_WEEKS_PER_YEAR;
-    const co2 = round(
-      (f.idleMinutesPerDay / 60) * litresPerHour * f.petrolCo2KgPerLitre * workDays,
-      0,
-    );
-    drafts.push({
-      id: 'no-idling',
-      title: 'Switch off the engine at signals longer than 10 seconds',
-      category: 'transport',
-      detail: region.isIndia
-        ? 'Delhi\'s "Red Light On, Gaadi Off" campaign targets exactly this.'
-        : 'Idling engines put exhaust right where pedestrians and cyclists breathe.',
-      perHousehold: { co2KgPerYear: co2, pm25GPerYear: null, noxGPerYear: null },
-      impactStatement: `Skipping ~${f.idleMinutesPerDay} min of idling a day saves ~${co2} kg CO₂ a year and keeps exhaust away from pedestrians at junctions.`,
-    });
-  }
-  return drafts;
+  return [
+    switchCommuteAction(commute),
+    workFromHomeAction(household, commute, region),
+    noIdlingAction(household, region),
+  ].filter(isPresent);
 }
 
 function homeActions(household: Household, region: Region): Draft[] {

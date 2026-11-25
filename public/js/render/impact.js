@@ -3,26 +3,13 @@ import { pledgeTotals } from '../community.js';
 import { el } from '../dom.js';
 import { formatCo2, formatMass, formatNumber, signedPct } from '../format.js';
 import { icon } from './icons.js';
+import { stat } from './stat.js';
 
 /**
  * @typedef {import('../../../src/domain/brief.js').AirBrief} Brief
  * @typedef {import('../../../src/domain/impact/index.js').ModeImpact} ModeImpact
  * @typedef {import('../../../src/domain/impact/index.js').CommuteComparison} CommuteComparison
  */
-
-/**
- * @param {string} name
- * @param {string} value
- * @param {string} label
- */
-const stat = (name, value, label) =>
-  el(
-    'div',
-    { className: 'stat' },
-    icon(name),
-    el('span', { className: 'stat-value', text: value }),
-    el('span', { className: 'stat-label', text: label }),
-  );
 
 /**
  * Headline: what the whole plan avoids per year, with a live community slider.

@@ -85,23 +85,33 @@ export interface IndoorInput {
   now?: LocalTime;
 }
 
-function option(
-  id: IndoorOption['id'],
-  label: string,
-  cadr: number,
-  volume: number,
-  outdoor: number,
-  baseline: number,
-): IndoorOption {
-  const indoor = estimateIndoorPm25(outdoor, cadr, volume);
+/** The room being modelled: its volume, the outdoor PM2.5 and indoor PM2.5 with no filtration. */
+interface Room {
+  volume: number;
+  outdoor: number;
+  baseline: number;
+}
+
+function option(id: IndoorOption['id'], label: string, cadr: number, room: Room): IndoorOption {
+  const indoor = estimateIndoorPm25(room.outdoor, cadr, room.volume);
   return {
     id,
     label,
     cadrM3h: cadr,
-    airChangesPerHour: Math.round((cadr / volume) * 10) / 10,
+    airChangesPerHour: Math.round((cadr / room.volume) * 10) / 10,
     indoorPm25: indoor,
-    reductionPct: baseline > 0 ? Math.round(((baseline - indoor) / baseline) * 100) : 0,
+    reductionPct:
+      room.baseline > 0 ? Math.round(((room.baseline - indoor) / room.baseline) * 100) : 0,
   };
+}
+
+/** The family's own purifier (or a DIY fan filter if they have none), then one sized for the room. */
+function filterOptions(home: Household['home'], room: Room, recommended: number): IndoorOption[] {
+  const first =
+    home.hasAirPurifier && home.purifierCadrM3h > 0
+      ? option('current_purifier', 'Your purifier', home.purifierCadrM3h, room)
+      : option('diy_fan_filter', 'DIY fan + filter', MODEL.diyFanFilterCadrM3h, room);
+  return [first, option('recommended_purifier', 'Purifier rated for this room', recommended, room)];
 }
 
 function purifierHacks(input: IndoorInput, plan: Omit<IndoorPlan, 'hacks'>): IndoorHack[] {
@@ -211,76 +221,19 @@ function heatingHack(household: Household): IndoorHack | null {
   }
 }
 
-/** Build indoor estimates and a prioritised list of practical "hacks". */
-export function buildIndoorPlan(input: IndoorInput): IndoorPlan {
-  const { household, outdoorPm25, airLevel } = input;
-  const volume = roomVolume(household.home.roomAreaSqm);
-  const baseline = estimateIndoorPm25(outdoorPm25, 0, volume);
-  const recommended = recommendedCadr(household.home.roomAreaSqm);
-
-  const options: IndoorOption[] = [];
-  if (household.home.hasAirPurifier && household.home.purifierCadrM3h > 0) {
-    options.push(
-      option(
-        'current_purifier',
-        'Your purifier',
-        household.home.purifierCadrM3h,
-        volume,
-        outdoorPm25,
-        baseline,
-      ),
-    );
-  } else {
-    options.push(
-      option(
-        'diy_fan_filter',
-        'DIY fan + filter',
-        MODEL.diyFanFilterCadrM3h,
-        volume,
-        outdoorPm25,
-        baseline,
-      ),
-    );
-  }
-  options.push(
-    option(
-      'recommended_purifier',
-      'Purifier rated for this room',
-      recommended,
-      volume,
-      outdoorPm25,
-      baseline,
-    ),
-  );
-
-  const partial = {
-    roomVolumeM3: Math.round(volume),
-    outdoorPm25: Math.round(outdoorPm25),
-    baselineIndoorPm25: baseline,
-    recommendedCadrM3h: recommended,
-    options,
-  };
-
-  const hacks: IndoorHack[] = [
-    ...purifierHacks(input, partial),
-    ventilationHack(input),
-    cookingHack(household),
-  ];
-
-  const heating = heatingHack(household);
-  if (heating) hacks.push(heating);
-
+/** Low-cost habits that help in any home, chosen by how polluted the air is. */
+function everydayHacks(airLevel: SeverityLevel, room: Room): IndoorHack[] {
+  const hacks: IndoorHack[] = [];
   if (airLevel >= 3) {
-    const sealed = estimateIndoorPm25(outdoorPm25, 0, volume, MODEL.sealedInfiltrationAch);
+    const sealed = estimateIndoorPm25(room.outdoor, 0, room.volume, MODEL.sealedInfiltrationAch);
     hacks.push({
       id: 'seal-gaps',
       title: 'Seal gaps around doors and windows',
       detail: 'Foam weather-strips and a rolled towel under the door cost under ₹300.',
-      impact: `Halving leakage lowers indoor PM2.5 ≈ ${baseline} → ${sealed} µg/m³ even without a purifier.`,
+      impact: `Halving leakage lowers indoor PM2.5 ≈ ${String(room.baseline)} → ${String(sealed)} µg/m³ even without a purifier.`,
       priority: 2,
     });
   }
-
   hacks.push({
     id: 'no-indoor-smoke',
     title: 'Skip incense, mosquito coils and candles on smog days',
@@ -290,7 +243,6 @@ export function buildIndoorPlan(input: IndoorInput): IndoorPlan {
       'Burning one mosquito coil can emit as much PM2.5 as 75–137 cigarettes (Liu et al., Environ Health Perspect, 2003).',
     priority: airLevel >= 2 ? 2 : 3,
   });
-
   if (airLevel >= 2) {
     hacks.push({
       id: 'wet-cleaning',
@@ -300,7 +252,6 @@ export function buildIndoorPlan(input: IndoorInput): IndoorPlan {
       priority: 3,
     });
   }
-
   hacks.push({
     id: 'plants-myth',
     title: 'Myth-buster: houseplants will not clean the air',
@@ -309,7 +260,34 @@ export function buildIndoorPlan(input: IndoorInput): IndoorPlan {
       'A 2019 review found you would need 10–1,000 plants per m² to match ordinary ventilation (Cummings & Waring, J Expo Sci Environ Epidemiol).',
     priority: 3,
   });
+  return hacks;
+}
 
+/** Build indoor estimates and a prioritised list of practical "hacks". */
+export function buildIndoorPlan(input: IndoorInput): IndoorPlan {
+  const { household, outdoorPm25, airLevel } = input;
+  const volume = roomVolume(household.home.roomAreaSqm);
+  const room: Room = {
+    volume,
+    outdoor: outdoorPm25,
+    baseline: estimateIndoorPm25(outdoorPm25, 0, volume),
+  };
+  const recommended = recommendedCadr(household.home.roomAreaSqm);
+  const partial = {
+    roomVolumeM3: Math.round(volume),
+    outdoorPm25: Math.round(outdoorPm25),
+    baselineIndoorPm25: room.baseline,
+    recommendedCadrM3h: recommended,
+    options: filterOptions(household.home, room, recommended),
+  };
+  const heating = heatingHack(household);
+  const hacks: IndoorHack[] = [
+    ...purifierHacks(input, partial),
+    ventilationHack(input),
+    cookingHack(household),
+    ...(heating ? [heating] : []),
+    ...everydayHacks(airLevel, room),
+  ];
   hacks.sort((a, b) => a.priority - b.priority);
   return { ...partial, hacks };
 }

@@ -1,5 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { GoogleGenAI } from '@google/genai';
+import type { AppConfig } from '../../config.js';
 import type { ChatTurn } from './prompt.js';
 
 /**
@@ -150,14 +151,8 @@ export function createClaudeProvider(options: {
   };
 }
 
-export interface LlmConfig {
-  provider: 'auto' | 'gemini' | 'claude' | 'none';
-  geminiApiKey?: string | undefined;
-  geminiModel: string;
-  anthropicApiKey?: string | undefined;
-  anthropicModel: string;
-  timeoutMs: number;
-}
+/** The assistant's slice of the app configuration (single definition in config.ts). */
+export type LlmConfig = AppConfig['llm'];
 
 /** Pick a provider from configuration; `null` means rule-based answers only. */
 export function selectProvider(config: LlmConfig): LlmProvider | null {

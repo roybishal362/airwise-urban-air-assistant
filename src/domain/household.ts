@@ -43,7 +43,7 @@ export const householdSchema = z.strictObject({
   members: z
     .strictObject({ adults: count, children: count, seniors: count })
     .refine((m) => m.adults + m.children + m.seniors >= 1, {
-      message: 'A household needs at least one member',
+      error: 'A household needs at least one member',
     }),
   conditions: z
     .array(z.enum(HEALTH_CONDITIONS))

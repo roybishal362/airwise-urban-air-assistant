@@ -50,6 +50,44 @@ export function messageNode(turn, source) {
   );
 }
 
+/** @param {unknown} error */
+const failureText = (error) =>
+  error instanceof Error ? error.message : 'Sorry, something went wrong.';
+
+/**
+ * Suggested follow-up questions as one-tap chips.
+ * @param {HTMLElement} container @param {readonly string[]} questions
+ * @param {(question: string) => unknown} ask
+ */
+function renderSuggestions(container, questions, ask) {
+  replaceChildren(
+    container,
+    questions.map((q) => {
+      const chip = el('button', { type: 'button', className: 'chip', text: q });
+      chip.addEventListener('click', () => void ask(q));
+      return chip;
+    }),
+  );
+}
+
+/**
+ * Submitting sends; so does Enter, while Shift+Enter adds a new line (common chat convention).
+ * @param {HTMLFormElement} form @param {HTMLTextAreaElement} input
+ * @param {(text: string) => unknown} ask
+ */
+function bindComposer(form, input, ask) {
+  form.addEventListener('submit', (event) => {
+    event.preventDefault();
+    void ask(input.value);
+  });
+  input.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter' && !event.shiftKey) {
+      event.preventDefault();
+      void ask(input.value);
+    }
+  });
+}
+
 /** @param {ChatOptions} options */
 export function createChat(options) {
   /** @type {Turn[]} */
@@ -59,16 +97,36 @@ export function createChat(options) {
     options.form.querySelector('button[type="submit"]')
   );
 
+  /** @param {boolean} on */
+  function setBusy(on) {
+    busy = on;
+    options.log.setAttribute('aria-busy', String(on));
+    if (button) button.disabled = on;
+  }
+
   /** @param {readonly string[]} questions */
-  function showSuggestions(questions) {
-    replaceChildren(
-      options.suggestions,
-      questions.map((q) => {
-        const chip = el('button', { type: 'button', className: 'chip', text: q });
-        chip.addEventListener('click', () => void ask(q));
-        return chip;
-      }),
-    );
+  const showSuggestions = (questions) => renderSuggestions(options.suggestions, questions, ask);
+
+  /**
+   * Post the question with a "thinking" placeholder; returns the placeholder.
+   * @param {string} message
+   */
+  function postQuestion(message) {
+    options.log.appendChild(messageNode({ role: 'user', content: message }));
+    const thinking = el('p', { className: 'msg msg-pending', text: 'AirWise is thinking…' });
+    options.log.appendChild(thinking);
+    options.input.value = '';
+    return thinking;
+  }
+
+  /**
+   * Record the exchange and swap the placeholder for the answer.
+   * @param {string} message @param {ChatAnswer} reply @param {HTMLElement} thinking
+   */
+  function showAnswer(message, reply, thinking) {
+    history.push({ role: 'user', content: message }, { role: 'assistant', content: reply.reply });
+    thinking.replaceWith(messageNode({ role: 'assistant', content: reply.reply }, reply.source));
+    showSuggestions(reply.suggestions ?? []);
   }
 
   /** @param {string} raw */
@@ -79,49 +137,18 @@ export function createChat(options) {
       options.onBlocked();
       return;
     }
-    busy = true;
-    options.log.setAttribute('aria-busy', 'true');
-    if (button) button.disabled = true;
-    options.log.appendChild(messageNode({ role: 'user', content: message }));
-    const thinking = el('p', { className: 'msg msg-pending', text: 'AirWise is thinking…' });
-    options.log.appendChild(thinking);
-    options.input.value = '';
+    setBusy(true);
+    const thinking = postQuestion(message);
     try {
-      const answer = await options.send(message, history.slice(-6));
-      history.push(
-        { role: 'user', content: message },
-        { role: 'assistant', content: answer.reply },
-      );
-      thinking.replaceWith(
-        messageNode({ role: 'assistant', content: answer.reply }, answer.source),
-      );
-      showSuggestions(answer.suggestions ?? []);
+      showAnswer(message, await options.send(message, history.slice(-6)), thinking);
     } catch (error) {
-      thinking.replaceWith(
-        messageNode({
-          role: 'assistant',
-          content: error instanceof Error ? error.message : 'Sorry, something went wrong.',
-        }),
-      );
+      thinking.replaceWith(messageNode({ role: 'assistant', content: failureText(error) }));
     } finally {
-      busy = false;
-      options.log.setAttribute('aria-busy', 'false');
-      if (button) button.disabled = false;
+      setBusy(false);
       options.log.scrollTop = options.log.scrollHeight;
     }
   }
 
-  options.form.addEventListener('submit', (event) => {
-    event.preventDefault();
-    void ask(options.input.value);
-  });
-  // Enter sends, Shift+Enter adds a new line (common chat convention).
-  options.input.addEventListener('keydown', (event) => {
-    if (event.key === 'Enter' && !event.shiftKey) {
-      event.preventDefault();
-      void ask(options.input.value);
-    }
-  });
-
+  bindComposer(options.form, options.input, ask);
   return { ask, showSuggestions, history };
 }

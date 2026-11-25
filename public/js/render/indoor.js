@@ -13,13 +13,10 @@ const PRIORITY_LABEL = {
 
 /**
  * One row of the before/after visual: label, proportional bar, value.
- * @param {string} label
- * @param {number} value
- * @param {number} max
- * @param {string} note
- * @param {boolean} clean
+ * @param {{ label: string, value: number, note?: string, clean?: boolean }} row
+ * @param {number} max  the value of a full-width bar
  */
-function vizRow(label, value, max, note, clean) {
+function vizRow({ label, value, note = '', clean = false }, max) {
   const fill = el('span');
   fill.style.setProperty('--w', `${Math.max(2, Math.round((value / Math.max(max, 1)) * 100))}%`);
   return el(
@@ -44,15 +41,17 @@ export function renderIndoor(brief) {
       className: 'viz',
       'aria-label': `Estimated PM2.5 in a ${indoor.roomVolumeM3} m³ room with windows shut`,
     },
-    vizRow('Outdoors', indoor.outdoorPm25, max, '', false),
-    vizRow('Indoors, no filter', indoor.baselineIndoorPm25, max, '', false),
+    vizRow({ label: 'Outdoors', value: indoor.outdoorPm25 }, max),
+    vizRow({ label: 'Indoors, no filter', value: indoor.baselineIndoorPm25 }, max),
     indoor.options.map((o) =>
       vizRow(
-        `${o.label} (${o.cadrM3h} m³/h)`,
-        o.indoorPm25,
+        {
+          label: `${o.label} (${o.cadrM3h} m³/h)`,
+          value: o.indoorPm25,
+          note: ` (${signedPct(-o.reductionPct)})`,
+          clean: true,
+        },
         max,
-        ` (${signedPct(-o.reductionPct)})`,
-        true,
       ),
     ),
   );

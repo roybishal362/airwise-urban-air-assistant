@@ -21,30 +21,70 @@ import { el, replaceChildren } from '../dom.js';
  * }} SearchOptions
  */
 
+const BLOCKED =
+  'Location is blocked for this site. To allow it, click the icon left of the address bar, open Site settings and set Location to Allow. Or search for your city.';
+const TOO_SLOW = 'Finding your location took too long.';
+const NO_FIX =
+  'Your device could not work out its location (on Windows, check Settings › Privacy & security › Location).';
+
 /** @param {Place} p */
 export const placeLabel = (p) => [p.name, p.region, p.country].filter(Boolean).join(', ');
 
 /**
- * City search, one-tap popular cities and browser geolocation (with a
- * city-level network fallback when the device cannot locate itself).
- * @param {SearchOptions} options
+ * ~100 m precision is plenty for a ~10 km air-quality grid and protects privacy.
+ * @param {GeolocationPosition} position
+ * @returns {Place}
  */
-export function setupSearch({
-  ui,
-  searchPlaces,
-  choosePlace,
-  setStatus,
-  errorMessage,
-  geolocation,
-  locateApproximately,
-}) {
-  async function search() {
-    const query = ui.input.value.trim();
-    if (query.length < 2) {
-      setStatus('Type at least two letters of your city.', 'error');
-      ui.input.focus();
-      return;
-    }
+function roundedPlace({ coords }) {
+  const round = (/** @type {number} */ n) => Math.round(n * 1000) / 1000;
+  return {
+    name: 'Your location',
+    latitude: round(coords.latitude),
+    longitude: round(coords.longitude),
+  };
+}
+
+/**
+ * A one-tap popular city: `<button data-city data-lat data-lon data-country>`.
+ * @param {HTMLButtonElement} button
+ * @returns {Place}
+ */
+function chipPlace(button) {
+  const { city = '', lat = '', lon = '', country } = button.dataset;
+  return { name: city, latitude: Number(lat), longitude: Number(lon), countryCode: country };
+}
+
+/**
+ * One button per match; choosing one hides the list.
+ * @param {HTMLUListElement} list @param {Place[]} places
+ * @param {(place: Place) => unknown} choosePlace
+ */
+function showMatches(list, places, choosePlace) {
+  replaceChildren(
+    list,
+    places.map((p) => {
+      const button = el('button', {
+        type: 'button',
+        className: 'place-option',
+        text: placeLabel(p),
+      });
+      button.addEventListener('click', () => {
+        list.hidden = true;
+        void choosePlace(p);
+      });
+      return el('li', {}, button);
+    }),
+  );
+  list.hidden = false;
+}
+
+/**
+ * Search by name: validate, look up, list the matches and focus the first.
+ * @param {Pick<SearchOptions, 'ui' | 'searchPlaces' | 'choosePlace' | 'setStatus' | 'errorMessage'>} options
+ */
+function createTextSearch({ ui, searchPlaces, choosePlace, setStatus, errorMessage }) {
+  /** @param {string} query */
+  async function find(query) {
     setStatus(`Searching for "${query}"…`);
     try {
       const places = await searchPlaces(query);
@@ -55,22 +95,7 @@ export function setupSearch({
         );
         return;
       }
-      replaceChildren(
-        ui.results,
-        places.map((p) => {
-          const button = el('button', {
-            type: 'button',
-            className: 'place-option',
-            text: placeLabel(p),
-          });
-          button.addEventListener('click', () => {
-            ui.results.hidden = true;
-            void choosePlace(p);
-          });
-          return el('li', {}, button);
-        }),
-      );
-      ui.results.hidden = false;
+      showMatches(ui.results, places, choosePlace);
       setStatus(`${places.length} place${places.length === 1 ? '' : 's'} found. Choose one.`);
       ui.results.querySelector('button')?.focus();
     } catch (error) {
@@ -78,8 +103,46 @@ export function setupSearch({
     }
   }
 
-  /** Keyboard and screen-reader users land where they can act next. */
-  const focusSearch = () => ui.input.focus();
+  return async function search() {
+    const query = ui.input.value.trim();
+    if (query.length >= 2) return find(query);
+    setStatus('Type at least two letters of your city.', 'error');
+    ui.input.focus();
+  };
+}
+
+/**
+ * "Use my location": browser geolocation, with a city-level network fallback
+ * when the device cannot locate itself (but never when the user blocked it).
+ * @param {Pick<SearchOptions, 'ui' | 'choosePlace' | 'setStatus' | 'geolocation' | 'locateApproximately'>} options
+ */
+function createLocator({ ui, choosePlace, setStatus, geolocation, locateApproximately }) {
+  /** Keyboard and screen-reader users land where they can act next. @param {string} message */
+  function searchInstead(message) {
+    setStatus(message, 'error');
+    ui.input.focus();
+  }
+
+  /**
+   * Fall back to the area the server derives from the network, marked "(approximate)".
+   * @param {string} reason
+   */
+  async function useNetworkArea(reason) {
+    if (!locateApproximately) return searchInstead(`${reason} Search for your city instead.`);
+    setStatus(`${reason} Finding your approximate area from your network instead…`);
+    try {
+      await choosePlace(await locateApproximately());
+    } catch {
+      searchInstead(`${reason} Search for your city instead.`);
+    }
+  }
+
+  /** @param {GeolocationPositionError} error */
+  async function locationFailed(error) {
+    // The user (or the browser) blocked location: respect it, no fallback.
+    if (error.code === 1) return searchInstead(BLOCKED);
+    return useNetworkArea(error.code === 3 ? TOO_SLOW : NO_FIX);
+  }
 
   /** @param {boolean} busy */
   function setLocating(busy) {
@@ -87,46 +150,7 @@ export function setupSearch({
     ui.geoButton.setAttribute('aria-busy', String(busy));
   }
 
-  /**
-   * The device could not locate itself: fall back to the city-level area the
-   * server derives from the network, clearly marked "(approximate)".
-   * @param {string} reason
-   */
-  async function useNetworkArea(reason) {
-    if (!locateApproximately) {
-      setStatus(`${reason} Search for your city instead.`, 'error');
-      focusSearch();
-      return;
-    }
-    setStatus(`${reason} Finding your approximate area from your network instead…`);
-    try {
-      const place = await locateApproximately();
-      await choosePlace(place);
-    } catch {
-      setStatus(`${reason} Search for your city instead.`, 'error');
-      focusSearch();
-    }
-  }
-
-  /** @param {GeolocationPositionError} error */
-  function locationFailed(error) {
-    if (error.code === 1) {
-      // The user (or the browser) blocked location: respect it, no fallback.
-      setStatus(
-        'Location is blocked for this site. To allow it, click the icon left of the address bar, open Site settings and set Location to Allow. Or search for your city.',
-        'error',
-      );
-      focusSearch();
-      return Promise.resolve();
-    }
-    const reason =
-      error.code === 3
-        ? 'Finding your location took too long.'
-        : 'Your device could not work out its location (on Windows, check Settings › Privacy & security › Location).';
-    return useNetworkArea(reason);
-  }
-
-  function useMyLocation() {
+  return function useMyLocation() {
     setLocating(true);
     const done = () => setLocating(false);
     if (!geolocation) {
@@ -137,33 +161,27 @@ export function setupSearch({
     geolocation.getCurrentPosition(
       (position) => {
         done();
-        // ~100 m precision is plenty for a ~10 km air-quality grid and protects privacy.
-        const round = (/** @type {number} */ n) => Math.round(n * 1000) / 1000;
-        void choosePlace({
-          name: 'Your location',
-          latitude: round(position.coords.latitude),
-          longitude: round(position.coords.longitude),
-        });
+        void choosePlace(roundedPlace(position));
       },
       (error) => void locationFailed(error).finally(done),
       { timeout: 10_000, maximumAge: 600_000 },
     );
-  }
+  };
+}
 
+/**
+ * City search, one-tap popular cities and browser geolocation.
+ * @param {SearchOptions} options
+ */
+export function setupSearch(options) {
+  const { ui, choosePlace } = options;
+  const search = createTextSearch(options);
   ui.form.addEventListener('submit', (event) => {
     event.preventDefault();
     void search();
   });
-  ui.geoButton.addEventListener('click', useMyLocation);
+  ui.geoButton.addEventListener('click', createLocator(options));
   ui.cityButtons.forEach((button) => {
-    button.addEventListener('click', () => {
-      const { city = '', lat = '', lon = '', country } = button.dataset;
-      void choosePlace({
-        name: city,
-        latitude: Number(lat),
-        longitude: Number(lon),
-        countryCode: country,
-      });
-    });
+    button.addEventListener('click', () => void choosePlace(chipPlace(button)));
   });
 }

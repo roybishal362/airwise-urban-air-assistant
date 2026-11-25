@@ -1,6 +1,7 @@
 import {
   POLLUTANT_IDS,
   type AirSnapshot,
+  type Concentrations,
   type PollutantId,
   type StationInfo,
   type StationSnapshot,
@@ -62,6 +63,71 @@ export function describeStations(provider: string, stations: readonly StationInf
   return `Measured${time} by ${stations.length} monitoring station${stations.length === 1 ? '' : 's'} via ${provider}: ${names}.`;
 }
 
+type Factors = Partial<Record<PollutantId, number>>;
+
+const modelSource = (): DataSource => ({
+  kind: 'model',
+  label: MODEL_LABEL,
+  provider: 'Copernicus CAMS',
+  stations: [],
+  factors: {},
+});
+
+/** Station data is usable when at least one station reported a particle reading. */
+function hasUsableMeasurements(station: StationSnapshot | null): station is StationSnapshot {
+  if (!station || station.stations.length === 0) return false;
+  const { pm2_5: pm25, pm10 } = station.concentrations;
+  return typeof pm25 === 'number' || typeof pm10 === 'number';
+}
+
+/**
+ * The model at the hour the stations measured (official data is published
+ * hours late), so model and measurement are compared like with like; falls
+ * back to the current hour.
+ */
+function modelAtMeasurement(
+  air: AirSnapshot,
+  stations: readonly StationInfo[],
+  currentIndex: number,
+): Concentrations {
+  const hour = latestMeasurement(stations).slice(0, 13);
+  const index = air.hourly.findIndex((h) => h.time.slice(0, 13) === hour);
+  return air.hourly[index >= 0 ? index : currentIndex]?.concentrations ?? air.current;
+}
+
+/** measured ÷ modelled for every measured pollutant, clamped; 1 when the model has no value. */
+function correctionFactors(measured: Concentrations, model: Concentrations): Factors {
+  const factors: Factors = {};
+  for (const id of POLLUTANT_IDS) {
+    const real = measured[id];
+    if (typeof real !== 'number') continue;
+    const modelled = model[id];
+    factors[id] = typeof modelled === 'number' && modelled > 0 ? round2(clamp(real / modelled)) : 1;
+  }
+  return factors;
+}
+
+/** Scale each pollutant by its factor; pollutants without a factor are left out. */
+function scale(values: Concentrations, factors: Factors): Concentrations {
+  const scaled: Concentrations = {};
+  for (const id of POLLUTANT_IDS) {
+    const factor = factors[id];
+    const value = values[id];
+    scaled[id] = factor === undefined || typeof value !== 'number' ? null : value * factor;
+  }
+  return scaled;
+}
+
+/** Only what the stations measured; every other pollutant is null. */
+function measuredOnly(measured: Concentrations): Concentrations {
+  const current: Concentrations = {};
+  for (const id of POLLUTANT_IDS) {
+    const value = measured[id];
+    current[id] = typeof value === 'number' ? value : null;
+  }
+  return current;
+}
+
 /**
  * Anchor the model snapshot to station measurements.
  * @param currentIndex index of the current hour in `air.hourly` (used when the
@@ -72,52 +138,20 @@ export function calibrateAir(
   station: StationSnapshot | null,
   currentIndex: number,
 ): { air: AirSnapshot; source: DataSource } {
-  const measured = station?.concentrations ?? {};
-  const hasParticles = typeof measured.pm2_5 === 'number' || typeof measured.pm10 === 'number';
-  if (!station || !hasParticles || station.stations.length === 0) {
-    return {
-      air,
-      source: {
-        kind: 'model',
-        label: MODEL_LABEL,
-        provider: 'Copernicus CAMS',
-        stations: [],
-        factors: {},
-      },
-    };
-  }
-
-  // Compare like with like: the model at the hour the stations measured
-  // (official data is published hours late), else the current hour.
-  const measuredHour = latestMeasurement(station.stations).slice(0, 13);
-  const measuredIndex = air.hourly.findIndex((h) => h.time.slice(0, 13) === measuredHour);
-  const modelAtMeasurement =
-    air.hourly[measuredIndex >= 0 ? measuredIndex : currentIndex]?.concentrations ?? air.current;
-  const factors: Partial<Record<PollutantId, number>> = {};
-  for (const id of POLLUTANT_IDS) {
-    const real = measured[id];
-    const model = modelAtMeasurement[id];
-    if (typeof real !== 'number') continue;
-    factors[id] = typeof model === 'number' && model > 0 ? round2(clamp(real / model)) : 1;
-  }
-
-  const hourly = air.hourly.map((hour) => {
-    const concentrations: AirSnapshot['current'] = {};
-    for (const id of POLLUTANT_IDS) {
-      const factor = factors[id];
-      const value = hour.concentrations[id];
-      concentrations[id] =
-        factor === undefined || typeof value !== 'number' ? null : value * factor;
-    }
-    return { time: hour.time, concentrations };
-  });
-
-  const current: AirSnapshot['current'] = {};
-  for (const id of POLLUTANT_IDS)
-    current[id] = typeof measured[id] === 'number' ? measured[id] : null;
-
+  if (!hasUsableMeasurements(station)) return { air, source: modelSource() };
+  const factors = correctionFactors(
+    station.concentrations,
+    modelAtMeasurement(air, station.stations, currentIndex),
+  );
   return {
-    air: { ...air, current, hourly },
+    air: {
+      ...air,
+      current: measuredOnly(station.concentrations),
+      hourly: air.hourly.map((hour) => ({
+        time: hour.time,
+        concentrations: scale(hour.concentrations, factors),
+      })),
+    },
     source: {
       kind: 'station',
       label: describeStations(station.provider, station.stations),

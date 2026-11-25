@@ -99,45 +99,56 @@ export function assessFamilyRisk(
 ): FamilyRisk {
   const airLevel = reading.category.level;
   const vulnerability = assessVulnerability(household);
-  const sensitivityBump = vulnerability.isSensitive && airLevel >= 1 ? 1 : 0;
-  const level = clampLevel(airLevel + sensitivityBump);
+  const raised = vulnerability.isSensitive && airLevel >= 1;
+  const level = clampLevel(airLevel + (raised ? 1 : 0));
   const verdict = verdictFor(level);
-
-  const reasons = [
-    `Air is "${reading.category.label}" (${reading.value} on the ${reading.standard === 'in' ? 'India NAQI' : 'US AQI'} scale), severity ${airLevel} of 5.`,
-    `${POLLUTANT_LABELS[reading.dominantPollutant]} is the main pollutant right now.`,
-  ];
-  if (sensitivityBump) {
-    reasons.push(
-      `Your household includes ${formatList(vulnerability.groups)}, who react to pollution sooner, so we raise the family's risk by one level.`,
-    );
-  }
-  if (smog && (smog.trapRisk === 'high' || smog.trapRisk === 'severe')) {
-    reasons.push(
-      `Smog-trap risk is ${smog.trapRisk}: calm air will hold pollution near the ground for hours.`,
-    );
-  }
-
-  const memberAdvice: MemberAdvice[] = [];
-  const { adults, children, seniors } = household.members;
-  if (adults > 0) memberAdvice.push({ who: 'Adults', advice: adviceForAdults(airLevel) });
-  if (children > 0) memberAdvice.push({ who: 'Children', advice: adviceForChildren(airLevel) });
-  if (seniors > 0) memberAdvice.push({ who: 'Older adults', advice: adviceForSeniors(airLevel) });
-  if (airLevel >= 1) {
-    for (const condition of household.conditions) {
-      const label = CONDITION_LABELS[condition];
-      memberAdvice.push({
-        who: `Family member with ${label}`,
-        advice: CONDITION_ADVICE[condition],
-      });
-    }
-  }
-
   return {
     level,
     verdict,
     headline: headlineFor(verdict, airLevel, vulnerability.groups),
-    reasons,
-    memberAdvice,
+    reasons: riskReasons(reading, raised ? vulnerability.groups : [], smog),
+    memberAdvice: memberAdviceFor(household, airLevel),
   };
+}
+
+/** Why the family's risk is what it is, in plain language. */
+function riskReasons(
+  reading: AqiReading,
+  raisedFor: readonly string[],
+  smog?: SmogOutlook,
+): string[] {
+  const scale = reading.standard === 'in' ? 'India NAQI' : 'US AQI';
+  const reasons = [
+    `Air is "${reading.category.label}" (${String(reading.value)} on the ${scale} scale), severity ${String(reading.category.level)} of 5.`,
+    `${POLLUTANT_LABELS[reading.dominantPollutant]} is the main pollutant right now.`,
+  ];
+  if (raisedFor.length > 0) {
+    reasons.push(
+      `Your household includes ${formatList(raisedFor)}, who react to pollution sooner, so we raise the family's risk by one level.`,
+    );
+  }
+  if (smog?.trapRisk === 'high' || smog?.trapRisk === 'severe') {
+    reasons.push(
+      `Smog-trap risk is ${smog.trapRisk}: calm air will hold pollution near the ground for hours.`,
+    );
+  }
+  return reasons;
+}
+
+/** Advice for each kind of member present, plus condition-specific advice once the air is above "Good". */
+function memberAdviceFor(household: Household, airLevel: SeverityLevel): MemberAdvice[] {
+  const { adults, children, seniors } = household.members;
+  const advice: MemberAdvice[] = [
+    ...(adults > 0 ? [{ who: 'Adults', advice: adviceForAdults(airLevel) }] : []),
+    ...(children > 0 ? [{ who: 'Children', advice: adviceForChildren(airLevel) }] : []),
+    ...(seniors > 0 ? [{ who: 'Older adults', advice: adviceForSeniors(airLevel) }] : []),
+  ];
+  if (airLevel < 1) return advice;
+  return [
+    ...advice,
+    ...household.conditions.map((condition) => ({
+      who: `Family member with ${CONDITION_LABELS[condition]}`,
+      advice: CONDITION_ADVICE[condition],
+    })),
+  ];
 }

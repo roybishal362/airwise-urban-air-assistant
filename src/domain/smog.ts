@@ -99,6 +99,52 @@ const UNKNOWN: SmogOutlook = {
   explanation: ['Weather data is unavailable right now, so the smog-trap outlook is skipped.'],
 };
 
+/** Cold, near-saturated air: fog that turns smoke into dense smog. */
+const isFoggy = (h: HourlyWeather): boolean =>
+  h.humidityPct !== null && h.temperatureC !== null && h.humidityPct >= 90 && h.temperatureC <= 15;
+
+/** Mixing height and wind right now (just the wind when mixing height is missing). */
+function conditionsNow(now: HourlyWeather, ventilation: number | null): string[] {
+  if (ventilation !== null && now.boundaryLayerM !== null && now.windKmh !== null) {
+    return [
+      `Right now the mixing layer is about ${String(Math.round(now.boundaryLayerM))} m deep with ${now.windKmh.toFixed(1)} km/h wind, ` +
+        `a ventilation coefficient of ${ventilation.toLocaleString('en-US')} m²/s (${classifyDispersion(ventilation)} dispersion; below ${POOR_VENTILATION_M2S.toLocaleString('en-US')} m²/s pollution stays trapped near the ground).`,
+    ];
+  }
+  return now.windKmh === null ? [] : [`Wind is ${now.windKmh.toFixed(1)} km/h right now.`];
+}
+
+interface OutlookFacts {
+  now: HourlyWeather;
+  stagnantHours: number;
+  hours: number;
+  trapRisk: TrapRisk;
+  bestDispersion: DispersionWindow | null;
+  fogLikely: boolean;
+}
+
+/** Stagnation, the best dispersion window and fog, in plain language. */
+function outlookLines(f: OutlookFacts): string[] {
+  const trapped = f.trapRisk === 'high' || f.trapRisk === 'severe';
+  const lines = [
+    `${String(f.stagnantHours)} of the next ${String(f.hours)} hours have stagnant air.` +
+      (trapped
+        ? ' This is a classic winter inversion: cold air near the ground sits under warmer air like a lid, so smoke and exhaust from the whole city accumulate.'
+        : ''),
+  ];
+  if (f.bestDispersion) {
+    lines.push(
+      `Air disperses best around ${windowLabel(f.bestDispersion.start, f.bestDispersion.end, f.now.time)}, when sunshine lifts the mixing layer.`,
+    );
+  }
+  if (f.fogLikely) {
+    lines.push(
+      'Cold, near-saturated air is forecast: fog can mix with smoke into dense smog, typically overnight and early morning.',
+    );
+  }
+  return lines;
+}
+
 /** Analyse the next 24 hours of weather, starting at the current hour. */
 export function analyzeSmog(hours: readonly HourlyWeather[]): SmogOutlook {
   const window = hours.slice(0, 24);
@@ -110,39 +156,18 @@ export function analyzeSmog(hours: readonly HourlyWeather[]): SmogOutlook {
   const ventilationNow = ventilationCoefficient(now.boundaryLayerM, now.windKmh);
   const dispersionNow = ventilationNow === null ? null : classifyDispersion(ventilationNow);
   const bestDispersion = bestDispersionWindow(window);
-  const fogLikely = window.some(
-    (h) =>
-      h.humidityPct !== null &&
-      h.temperatureC !== null &&
-      h.humidityPct >= 90 &&
-      h.temperatureC <= 15,
-  );
-
-  const explanation: string[] = [];
-  if (ventilationNow !== null && now.boundaryLayerM !== null && now.windKmh !== null) {
-    explanation.push(
-      `Right now the mixing layer is about ${Math.round(now.boundaryLayerM)} m deep with ${now.windKmh.toFixed(1)} km/h wind, ` +
-        `a ventilation coefficient of ${ventilationNow.toLocaleString('en-US')} m²/s (${dispersionNow} dispersion; below ${POOR_VENTILATION_M2S.toLocaleString('en-US')} m²/s pollution stays trapped near the ground).`,
-    );
-  } else if (now.windKmh !== null) {
-    explanation.push(`Wind is ${now.windKmh.toFixed(1)} km/h right now.`);
-  }
-  explanation.push(
-    `${stagnantHours} of the next ${window.length} hours have stagnant air.` +
-      (trapRisk === 'high' || trapRisk === 'severe'
-        ? ' This is a classic winter inversion: cold air near the ground sits under warmer air like a lid, so smoke and exhaust from the whole city accumulate.'
-        : ''),
-  );
-  if (bestDispersion) {
-    explanation.push(
-      `Air disperses best around ${windowLabel(bestDispersion.start, bestDispersion.end, now.time)}, when sunshine lifts the mixing layer.`,
-    );
-  }
-  if (fogLikely) {
-    explanation.push(
-      'Cold, near-saturated air is forecast: fog can mix with smoke into dense smog, typically overnight and early morning.',
-    );
-  }
+  const fogLikely = window.some(isFoggy);
+  const explanation = [
+    ...conditionsNow(now, ventilationNow),
+    ...outlookLines({
+      now,
+      stagnantHours,
+      hours: window.length,
+      trapRisk,
+      bestDispersion,
+      fogLikely,
+    }),
+  ];
 
   return {
     available: true,

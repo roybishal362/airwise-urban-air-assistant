@@ -47,27 +47,46 @@ export function findWindow(
     const hour = hourOf(p.time);
     return hour >= earliestHour && hour < latestHour;
   };
+  const best = bestSlice(points, durationHours, mode, allowed);
+  return best ? toTimeWindow(best.slice, best.average) : null;
+}
 
-  let best: { slice: HourlyIndex[]; average: number } | null = null;
+interface Scored {
+  slice: HourlyIndex[];
+  average: number;
+}
+
+const averageAqi = (slice: readonly HourlyIndex[]): number =>
+  slice.reduce((sum, p) => sum + p.aqi, 0) / slice.length;
+
+/** The allowed contiguous block with the lowest ('best') or highest ('worst') average AQI. */
+function bestSlice(
+  points: readonly HourlyIndex[],
+  durationHours: number,
+  mode: 'best' | 'worst',
+  allowed: (p: HourlyIndex) => boolean,
+): Scored | null {
+  const beats = (a: number, b: number) => (mode === 'best' ? a < b : a > b);
+  let best: Scored | null = null;
   for (let i = 0; i + durationHours <= points.length; i += 1) {
     const slice = points.slice(i, i + durationHours);
     if (!slice.every(allowed)) continue;
-    const average = slice.reduce((sum, p) => sum + p.aqi, 0) / slice.length;
-    const better =
-      best === null || (mode === 'best' ? average < best.average : average > best.average);
-    if (better) best = { slice, average };
+    const average = averageAqi(slice);
+    if (best === null || beats(average, best.average)) best = { slice, average };
   }
+  return best;
+}
 
-  if (!best) return null;
-  const first = best.slice[0];
-  const last = best.slice[best.slice.length - 1];
+function toTimeWindow(slice: readonly HourlyIndex[], average: number): TimeWindow | null {
+  const first = slice[0];
+  const last = slice.at(-1);
   if (!first || !last) return null;
   return {
     start: first.time,
     end: addHours(last.time, 1),
-    averageAqi: Math.round(best.average),
-    peakAqi: Math.max(...best.slice.map((p) => p.aqi)),
-    level: maxLevel(best.slice),
+    averageAqi: Math.round(average),
+    peakAqi: Math.max(...slice.map((p) => p.aqi)),
+    level: maxLevel(slice),
   };
 }
 

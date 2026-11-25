@@ -28,6 +28,10 @@ import { hourKey } from './time.js';
 import {
   POLLUTANT_IDS,
   type AirSnapshot,
+  type AqiReading,
+  type Concentrations,
+  type HourlyAir,
+  type HourlyWeather,
   type AqiCategory,
   type GeoLocation,
   type HourlyIndex,
@@ -145,77 +149,55 @@ function summarise(brief: Omit<AirBrief, 'summary'>): string {
   return parts.join(' ');
 }
 
-export function buildBrief(input: BriefInput): AirBrief {
-  const { location, weather, household } = input;
-  const region = resolveRegion(location, input.air.timezone);
-  const standardId = resolveStandard(input.standard, {
-    countryCode: location.countryCode,
-    timezone: input.air.timezone,
-  });
-  const standard = STANDARDS[standardId];
-
-  const index = currentHourIndex(
-    input.air.hourly.map((h) => h.time),
-    input.air.currentTime,
-  );
-  // Measured station values replace the model's "now"; the forecast is rescaled to match.
-  const { air, source: dataSource } = calibrateAir(input.air, input.station ?? null, index);
-  const upcoming = air.hourly.slice(index, index + 24);
+/** The AQI "now": measured (or current) values, else the first forecast hour. */
+function readingNow(
+  air: AirSnapshot,
+  upcoming: readonly HourlyAir[],
+  standardId: StandardId,
+): AqiReading {
+  const first = upcoming[0];
   const reading =
     calculateAqi(air.current, standardId) ??
-    (upcoming[0] ? calculateAqi(upcoming[0].concentrations, standardId) : null);
+    (first ? calculateAqi(first.concentrations, standardId) : null);
   if (!reading)
     throw new InsufficientDataError('No usable pollutant measurements for this location');
+  return reading;
+}
 
-  const hours = buildHourlyIndex(upcoming, standardId);
-  const windows: DayWindows = {
+/** The day's cleanest and worst windows from the next 24 hours. */
+function dayWindows(hours: readonly HourlyIndex[]): DayWindows {
+  return {
     outdoor: findWindow(hours, 1, 'best', { earliestHour: 6, latestHour: 21 }),
     ventilation: findWindow(hours, 2, 'best', { earliestHour: 8, latestHour: 19 }),
     play: findWindow(hours, 1, 'best', { earliestHour: 14, latestHour: 19 }),
     worst: findWindow(hours, 3, 'worst'),
   };
+}
 
-  const weatherHours = weather
-    ? weather.hourly.slice(
-        currentHourIndex(
-          weather.hourly.map((h) => h.time),
-          air.currentTime,
-        ),
-      )
-    : [];
-  const smog: SmogOutlook = analyzeSmog(weatherHours);
-  const risk: FamilyRisk = assessFamilyRisk(reading, household, smog);
-
-  const outdoorPm25 = air.current.pm2_5 ?? upcoming[0]?.concentrations.pm2_5 ?? 0;
-  const indoor: IndoorPlan = buildIndoorPlan({
-    outdoorPm25,
-    airLevel: reading.category.level,
-    household,
-    ventilationWindow: windows.ventilation,
-    now: air.currentTime,
-  });
-  const commute = compareCommute(
-    household,
-    outdoorPm25,
-    reading.category.level,
-    region.gridCo2KgPerKwh,
+/** Weather from the current hour on; empty without weather (the smog outlook then degrades gracefully). */
+function weatherFromNow(weather: WeatherSnapshot | null, now: LocalTime): HourlyWeather[] {
+  if (!weather) return [];
+  const index = currentHourIndex(
+    weather.hourly.map((h) => h.time),
+    now,
   );
-  const actions = buildSustainableActions(household, commute, region);
-  // GRAP stages are defined on the India NAQI, whatever scale the user views.
-  const naqi = region.isDelhiNcr ? (calculateAqi(air.current, 'in')?.value ?? null) : null;
-  const routine = buildRoutine({
-    household,
-    risk,
-    windows,
-    smog,
-    commute,
-    indoor,
-    now: air.currentTime,
-  });
+  return weather.hourly.slice(index);
+}
 
+function standardSummary(standardId: StandardId): AirBrief['standard'] {
+  const standard = STANDARDS[standardId];
+  return {
+    id: standard.id,
+    name: standard.name,
+    shortName: standard.shortName,
+    bands: standard.categories.map(({ min, max, label, color }) => ({ min, max, label, color })),
+  };
+}
+
+function currentSummary(current: Concentrations, reading: AqiReading): AirBrief['current'] {
   const pollutants: PollutantReading[] = [];
   for (const id of POLLUTANT_IDS) {
-    const value = air.current[id];
+    const value = current[id];
     if (value === null || value === undefined) continue;
     pollutants.push({
       id,
@@ -224,36 +206,69 @@ export function buildBrief(input: BriefInput): AirBrief {
       subIndex: reading.subIndices[id] ?? null,
     });
   }
+  return {
+    aqi: reading.value,
+    category: reading.category,
+    dominantPollutant: reading.dominantPollutant,
+    dominantLabel: POLLUTANT_LABELS[reading.dominantPollutant],
+    pollutants,
+  };
+}
+
+/** GRAP stages are defined on the India NAQI, whatever scale the user views. */
+const delhiNaqi = (region: Region, current: Concentrations): number | null =>
+  region.isDelhiNcr ? (calculateAqi(current, 'in')?.value ?? null) : null;
+
+export function buildBrief(input: BriefInput): AirBrief {
+  const { location, weather, household } = input;
+  const region = resolveRegion(location, input.air.timezone);
+  const standardId = resolveStandard(input.standard, {
+    countryCode: location.countryCode,
+    timezone: input.air.timezone,
+  });
+  const index = currentHourIndex(
+    input.air.hourly.map((h) => h.time),
+    input.air.currentTime,
+  );
+  // Measured station values replace the model's "now"; the forecast is rescaled to match.
+  const { air, source: dataSource } = calibrateAir(input.air, input.station ?? null, index);
+  const now = air.currentTime;
+  const upcoming = air.hourly.slice(index, index + 24);
+  const reading = readingNow(air, upcoming, standardId);
+  const level = reading.category.level;
+  const hours = buildHourlyIndex(upcoming, standardId);
+  const windows = dayWindows(hours);
+  const smog = analyzeSmog(weatherFromNow(weather, now));
+  const risk = assessFamilyRisk(reading, household, smog);
+  const outdoorPm25 = air.current.pm2_5 ?? upcoming[0]?.concentrations.pm2_5 ?? 0;
+  const indoor = buildIndoorPlan({
+    outdoorPm25,
+    airLevel: level,
+    household,
+    ventilationWindow: windows.ventilation,
+    now,
+  });
+  const commute = compareCommute(household, outdoorPm25, level, region.gridCo2KgPerKwh);
+  const actions = buildSustainableActions(household, commute, region);
 
   const brief: Omit<AirBrief, 'summary'> = {
     location,
-    observedAt: air.currentTime,
+    observedAt: now,
     timezone: air.timezone,
-    standard: {
-      id: standard.id,
-      name: standard.name,
-      shortName: standard.shortName,
-      bands: standard.categories.map(({ min, max, label, color }) => ({ min, max, label, color })),
-    },
-    current: {
-      aqi: reading.value,
-      category: reading.category,
-      dominantPollutant: reading.dominantPollutant,
-      dominantLabel: POLLUTANT_LABELS[reading.dominantPollutant],
-      pollutants,
-    },
+    standard: standardSummary(standardId),
+    current: currentSummary(air.current, reading),
     forecast: { hours, trend: describeTrend(hours), windows },
     smog,
     risk,
-    routine,
+    routine: buildRoutine({ household, risk, windows, smog, commute, indoor, now }),
     indoor,
     commute,
     actions,
     communityHouseholds: household.communityHouseholds,
     community: summariseCommunity(actions, household.communityHouseholds),
     region,
-    policy: localPolicy(region, naqi, household),
-    glance: buildGlance({ reading, windows, commute, household, now: air.currentTime }),
+    policy: localPolicy(region, delhiNaqi(region, air.current), household),
+    glance: buildGlance({ reading, windows, commute, household, now }),
     exposure: exposureEquivalents(outdoorPm25),
     dataSource,
   };

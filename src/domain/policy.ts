@@ -66,29 +66,46 @@ export function grapStageFor(naqi: number): GrapStage {
   return 0;
 }
 
+const FUEL_CARS: ReadonlySet<string> = new Set(['car_petrol', 'car_diesel']);
+const drivesFuelCar = (h: Household): boolean => FUEL_CARS.has(h.lifestyle.commuteMode);
+
+/** What each GRAP stage means for a household, from the stage at which it starts to apply. */
+const IMPLICATIONS: readonly {
+  fromStage: Exclude<GrapStage, 0>;
+  appliesTo: (household: Household) => boolean;
+  text: string;
+}[] = [
+  {
+    fromStage: 1,
+    appliesTo: () => true,
+    text: 'Burning leaves or garbage is banned: report it on the Green Delhi or CPCB Sameer app.',
+  },
+  {
+    fromStage: 2,
+    appliesTo: (h) => drivesFuelCar(h) || h.lifestyle.commuteMode === 'car_cng',
+    text: 'Parking costs more and extra metro and bus services run: a good week to switch.',
+  },
+  {
+    fromStage: 3,
+    appliesTo: drivesFuelCar,
+    text: "Check your car's emission norm: older BS-III petrol and BS-IV diesel cars may be barred.",
+  },
+  {
+    fromStage: 3,
+    appliesTo: (h) => h.members.children > 0,
+    text: "Watch for your school's notice: classes may move to hybrid or online mode.",
+  },
+  {
+    fromStage: 4,
+    appliesTo: (h) => h.lifestyle.workFromHomePossible,
+    text: 'Ask your employer about working from home: offices may be told to halve attendance.',
+  },
+];
+
 function personalImplications(stage: Exclude<GrapStage, 0>, household: Household): string[] {
-  const { commuteMode, workFromHomePossible } = household.lifestyle;
-  const drivesFuelCar = commuteMode === 'car_petrol' || commuteMode === 'car_diesel';
-  const forYou = [
-    'Burning leaves or garbage is banned: report it on the Green Delhi or CPCB Sameer app.',
-  ];
-  if (stage >= 2 && (drivesFuelCar || commuteMode === 'car_cng')) {
-    forYou.push('Parking costs more and extra metro and bus services run: a good week to switch.');
-  }
-  if (stage >= 3 && drivesFuelCar) {
-    forYou.push(
-      "Check your car's emission norm: older BS-III petrol and BS-IV diesel cars may be barred.",
-    );
-  }
-  if (stage >= 3 && household.members.children > 0) {
-    forYou.push("Watch for your school's notice: classes may move to hybrid or online mode.");
-  }
-  if (stage >= 4 && workFromHomePossible) {
-    forYou.push(
-      'Ask your employer about working from home: offices may be told to halve attendance.',
-    );
-  }
-  return forYou;
+  return IMPLICATIONS.filter((rule) => stage >= rule.fromStage && rule.appliesTo(household)).map(
+    (rule) => rule.text,
+  );
 }
 
 /** GRAP context for Delhi-NCR families; `null` elsewhere or when air is better than 'Poor'. */

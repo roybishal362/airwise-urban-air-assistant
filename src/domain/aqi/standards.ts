@@ -243,6 +243,13 @@ const IN_INDEX: readonly (readonly [number, number])[] = [
   [401, 500],
 ];
 
+/** A CPCB scale: concentration breakpoints mapped onto the six NAQI index bands. */
+const cpcb = (
+  concentrations: readonly (readonly [number, number])[],
+  unit: ConcentrationUnit = 'ug/m3',
+  decimals = 0,
+): PollutantScale => ({ unit, decimals, bands: toBands(withIndex(concentrations, IN_INDEX)) });
+
 export const INDIA_NAQI: AqiStandard = {
   id: 'in',
   name: 'India National Air Quality Index (CPCB)',
@@ -305,108 +312,58 @@ export const INDIA_NAQI: AqiStandard = {
     },
   ],
   scales: {
-    pm2_5: {
-      unit: 'ug/m3',
-      decimals: 0,
-      bands: toBands(
-        withIndex(
-          [
-            [0, 30],
-            [31, 60],
-            [61, 90],
-            [91, 120],
-            [121, 250],
-            [251, 380],
-          ],
-          IN_INDEX,
-        ),
-      ),
-    },
-    pm10: {
-      unit: 'ug/m3',
-      decimals: 0,
-      bands: toBands(
-        withIndex(
-          [
-            [0, 50],
-            [51, 100],
-            [101, 250],
-            [251, 350],
-            [351, 430],
-            [431, 510],
-          ],
-          IN_INDEX,
-        ),
-      ),
-    },
-    o3: {
-      unit: 'ug/m3',
-      decimals: 0,
-      bands: toBands(
-        withIndex(
-          [
-            [0, 50],
-            [51, 100],
-            [101, 168],
-            [169, 208],
-            [209, 748],
-            [749, 1000],
-          ],
-          IN_INDEX,
-        ),
-      ),
-    },
-    no2: {
-      unit: 'ug/m3',
-      decimals: 0,
-      bands: toBands(
-        withIndex(
-          [
-            [0, 40],
-            [41, 80],
-            [81, 180],
-            [181, 280],
-            [281, 400],
-            [401, 520],
-          ],
-          IN_INDEX,
-        ),
-      ),
-    },
-    so2: {
-      unit: 'ug/m3',
-      decimals: 0,
-      bands: toBands(
-        withIndex(
-          [
-            [0, 40],
-            [41, 80],
-            [81, 380],
-            [381, 800],
-            [801, 1600],
-            [1601, 2400],
-          ],
-          IN_INDEX,
-        ),
-      ),
-    },
-    co: {
-      unit: 'mg/m3',
-      decimals: 1,
-      bands: toBands(
-        withIndex(
-          [
-            [0, 1.0],
-            [1.1, 2.0],
-            [2.1, 10],
-            [10.1, 17],
-            [17.1, 34],
-            [34.1, 51],
-          ],
-          IN_INDEX,
-        ),
-      ),
-    },
+    pm2_5: cpcb([
+      [0, 30],
+      [31, 60],
+      [61, 90],
+      [91, 120],
+      [121, 250],
+      [251, 380],
+    ]),
+    pm10: cpcb([
+      [0, 50],
+      [51, 100],
+      [101, 250],
+      [251, 350],
+      [351, 430],
+      [431, 510],
+    ]),
+    o3: cpcb([
+      [0, 50],
+      [51, 100],
+      [101, 168],
+      [169, 208],
+      [209, 748],
+      [749, 1000],
+    ]),
+    no2: cpcb([
+      [0, 40],
+      [41, 80],
+      [81, 180],
+      [181, 280],
+      [281, 400],
+      [401, 520],
+    ]),
+    so2: cpcb([
+      [0, 40],
+      [41, 80],
+      [81, 380],
+      [381, 800],
+      [801, 1600],
+      [1601, 2400],
+    ]),
+    co: cpcb(
+      [
+        [0, 1.0],
+        [1.1, 2.0],
+        [2.1, 10],
+        [10.1, 17],
+        [17.1, 34],
+        [34.1, 51],
+      ],
+      'mg/m3',
+      1,
+    ),
   },
 };
 

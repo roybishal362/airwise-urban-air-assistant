@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { MOLAR_VOLUME_L, MOLECULAR_WEIGHT } from '../domain/aqi/calculator.js';
 import type { Concentrations, PollutantId, StationInfo, StationSnapshot } from '../domain/types.js';
 import { UpstreamError } from '../lib/errors.js';
 import type { FetchFn } from '../lib/http.js';
@@ -20,13 +21,6 @@ const PARAMETER_MAP: Readonly<Record<string, PollutantId>> = {
   so2: 'so2',
   o3: 'o3',
   co: 'co',
-};
-
-const MOLECULAR_WEIGHT: Readonly<Partial<Record<PollutantId, number>>> = {
-  no2: 46.0055,
-  so2: 64.066,
-  o3: 47.9982,
-  co: 28.01,
 };
 
 const timeSchema = z.object({ utc: z.string(), local: z.string() });
@@ -76,8 +70,8 @@ export function toMicrograms(value: number, units: string, pollutant: PollutantI
   if (unit === 'mg/m3') return value * 1000;
   const weight = MOLECULAR_WEIGHT[pollutant];
   if (weight === undefined) return null;
-  if (unit === 'ppb') return (value * weight) / 24.45;
-  if (unit === 'ppm') return (value * 1000 * weight) / 24.45;
+  if (unit === 'ppb') return (value * weight) / MOLAR_VOLUME_L;
+  if (unit === 'ppm') return (value * 1000 * weight) / MOLAR_VOLUME_L;
   return null;
 }
 
@@ -117,6 +111,151 @@ export interface OpenAqOptions {
   maxStations?: number;
 }
 
+type Location = z.infer<typeof locationsSchema>['results'][number];
+type Reading = z.infer<typeof latestSchema>['results'][number];
+type IsFresh = (utc: string | undefined) => boolean;
+type GetJson = (url: URL) => Promise<unknown>;
+
+interface Candidate {
+  loc: Location;
+  distanceKm: number;
+}
+
+/** One usable measurement, already in µg/m³. */
+interface StationReading {
+  pollutant: PollutantId;
+  value: number;
+  measuredAtLocal: string;
+}
+
+const HOUR_MS = 3_600_000;
+const PARTICLES = new Set(['pm25', 'pm10']);
+const round1 = (value: number): number => Math.round(value * 10) / 10;
+const unavailable = (detail: string) =>
+  new UpstreamError('Station data is unavailable right now.', { detail });
+
+/** Reference monitors near a point (low-cost sensors are also filtered client-side). */
+function locationsUrl(latitude: number, longitude: number): URL {
+  const url = new URL(`${OPENAQ_BASE}/locations`);
+  url.searchParams.set('coordinates', `${latitude.toFixed(4)},${longitude.toFixed(4)}`);
+  url.searchParams.set('radius', String(SEARCH_RADIUS_M));
+  url.searchParams.set('limit', '100');
+  url.searchParams.set('monitor', 'true');
+  return url;
+}
+
+/** Fresh reference monitors that measure particles, nearest first. */
+export function nearestStations(
+  locations: readonly Location[],
+  from: { latitude: number; longitude: number },
+  isFresh: IsFresh,
+): Candidate[] {
+  return locations
+    .filter((loc) => loc.isMonitor !== false && isFresh(loc.datetimeLast?.utc))
+    .filter((loc) => loc.sensors.some((sensor) => PARTICLES.has(sensor.parameter.name)))
+    .map((loc) => ({
+      loc,
+      distanceKm: haversineKm(
+        from.latitude,
+        from.longitude,
+        loc.coordinates.latitude,
+        loc.coordinates.longitude,
+      ),
+    }))
+    .sort((a, b) => a.distanceKm - b.distanceKm);
+}
+
+/**
+ * Latest readings of each station, fetched in parallel. A station whose
+ * request or payload fails is skipped (null); if every request fails, the
+ * first error is raised so it gets logged.
+ */
+async function readLatest(
+  get: GetJson,
+  stations: readonly Candidate[],
+): Promise<(Reading[] | null)[]> {
+  const settled = await Promise.allSettled(
+    stations.map(({ loc }) => get(new URL(`${OPENAQ_BASE}/locations/${String(loc.id)}/latest`))),
+  );
+  const failures = settled.filter((r): r is PromiseRejectedResult => r.status === 'rejected');
+  if (failures.length > 0 && failures.length === settled.length) throw failures[0]?.reason;
+  return settled.map((result) => {
+    if (result.status === 'rejected') return null;
+    const parsed = latestSchema.safeParse(result.value);
+    return parsed.success ? parsed.data.results : null;
+  });
+}
+
+/**
+ * A reading in µg/m³, or null if its sensor is unknown or the value is
+ * missing, negative, stale or in units we cannot convert.
+ */
+function toStationReading(
+  loc: Location,
+  reading: Reading,
+  isFresh: IsFresh,
+): StationReading | null {
+  const sensor = loc.sensors.find((s) => s.id === reading.sensorsId);
+  const pollutant = sensor ? PARAMETER_MAP[sensor.parameter.name] : undefined;
+  if (!sensor || !pollutant) return null;
+  if (reading.value === null || reading.value < 0 || !isFresh(reading.datetime.utc)) return null;
+  const units = effectiveUnits(loc.provider?.name, pollutant, sensor.parameter.units);
+  const value = toMicrograms(reading.value, units, pollutant);
+  return value === null ? null : { pollutant, value, measuredAtLocal: reading.datetime.local };
+}
+
+function stationInfo(
+  { loc, distanceKm }: Candidate,
+  readings: readonly StationReading[],
+): StationInfo {
+  const latest =
+    readings
+      .map((r) => r.measuredAtLocal)
+      .sort()
+      .at(-1) ?? '';
+  return {
+    name: loc.name ?? `Station ${String(loc.id)}`,
+    distanceKm: round1(distanceKm),
+    measuredAtLocal: latest.slice(0, 16),
+  };
+}
+
+/** Average each pollutant across all readings, to 0.1 µg/m³. */
+function average(readings: readonly StationReading[]): Concentrations {
+  const sums = new Map<PollutantId, { total: number; count: number }>();
+  for (const { pollutant, value } of readings) {
+    const slot = sums.get(pollutant) ?? { total: 0, count: 0 };
+    sums.set(pollutant, { total: slot.total + value, count: slot.count + 1 });
+  }
+  const concentrations: Concentrations = {};
+  for (const [pollutant, { total, count }] of sums)
+    concentrations[pollutant] = round1(total / count);
+  return concentrations;
+}
+
+/** Combine the stations' readings; null unless at least one station measured particles. */
+function snapshot(
+  stations: readonly Candidate[],
+  latest: readonly (Reading[] | null)[],
+  isFresh: IsFresh,
+): StationSnapshot | null {
+  const used: StationInfo[] = [];
+  const readings: StationReading[] = [];
+  stations.forEach((station, i) => {
+    const usable = (latest[i] ?? [])
+      .map((reading) => toStationReading(station.loc, reading, isFresh))
+      .filter((reading): reading is StationReading => reading !== null);
+    if (usable.length === 0) return;
+    used.push(stationInfo(station, usable));
+    readings.push(...usable);
+  });
+  const concentrations = average(readings);
+  const hasParticles = concentrations.pm2_5 !== undefined || concentrations.pm10 !== undefined;
+  return used.length > 0 && hasParticles
+    ? { provider: 'OpenAQ', stations: used, concentrations }
+    : null;
+}
+
 export function createOpenAqClient(options: OpenAqOptions): StationClient {
   const {
     apiKey,
@@ -126,8 +265,10 @@ export function createOpenAqClient(options: OpenAqOptions): StationClient {
     maxAgeHours = 6,
     maxStations = 3,
   } = options;
+  const isFresh: IsFresh = (utc) =>
+    utc !== undefined && now() - Date.parse(utc) <= maxAgeHours * HOUR_MS;
 
-  async function get(url: URL): Promise<unknown> {
+  const get: GetJson = async (url) => {
     let response: Response;
     try {
       response = await fetchFn(url, {
@@ -135,107 +276,22 @@ export function createOpenAqClient(options: OpenAqOptions): StationClient {
         signal: AbortSignal.timeout(timeoutMs),
       });
     } catch {
-      throw new UpstreamError('Station data is unavailable right now.', {
-        detail: 'openaq: network',
-      });
+      throw unavailable('openaq: network');
     }
-    if (!response.ok) {
-      throw new UpstreamError('Station data is unavailable right now.', {
-        detail: `openaq: HTTP ${response.status}`,
-      });
-    }
+    if (!response.ok) throw unavailable(`openaq: HTTP ${String(response.status)}`);
     return response.json();
-  }
-
-  const isFresh = (utc: string | undefined): boolean =>
-    utc !== undefined && now() - Date.parse(utc) <= maxAgeHours * 3_600_000;
+  };
 
   return {
     async latest(latitude, longitude) {
-      const url = new URL(`${OPENAQ_BASE}/locations`);
-      url.searchParams.set('coordinates', `${latitude.toFixed(4)},${longitude.toFixed(4)}`);
-      url.searchParams.set('radius', String(SEARCH_RADIUS_M));
-      url.searchParams.set('limit', '100');
-      // Reference-grade monitors only (low-cost sensors are also filtered below).
-      url.searchParams.set('monitor', 'true');
-      const parsed = locationsSchema.safeParse(await get(url));
-      if (!parsed.success)
-        throw new UpstreamError('Station data is unavailable right now.', {
-          detail: 'openaq: schema',
-        });
-
-      const candidates = parsed.data.results
-        .filter((loc) => loc.isMonitor !== false)
-        .filter((loc) => isFresh(loc.datetimeLast?.utc))
-        .filter((loc) => loc.sensors.some((s) => ['pm25', 'pm10'].includes(s.parameter.name)))
-        .map((loc) => ({
-          loc,
-          distanceKm: haversineKm(
-            latitude,
-            longitude,
-            loc.coordinates.latitude,
-            loc.coordinates.longitude,
-          ),
-        }))
-        .sort((a, b) => a.distanceKm - b.distanceKm)
-        .slice(0, maxStations);
-
-      // Latest readings for the nearest stations, in parallel. One failing
-      // station is skipped; if all fail, the error surfaces (and is logged).
-      const settled = await Promise.allSettled(
-        candidates.map(({ loc }) => get(new URL(`${OPENAQ_BASE}/locations/${loc.id}/latest`))),
-      );
-      const firstFailure = settled.find((r): r is PromiseRejectedResult => r.status === 'rejected');
-      if (firstFailure && settled.every((r) => r.status === 'rejected')) {
-        throw firstFailure.reason;
-      }
-
-      const sums: Partial<Record<PollutantId, { total: number; count: number }>> = {};
-      const stations: StationInfo[] = [];
-      for (const [i, { loc, distanceKm }] of candidates.entries()) {
-        const result = settled[i];
-        if (result?.status !== 'fulfilled') continue;
-        const latest = latestSchema.safeParse(result.value);
-        if (!latest.success) continue;
-        let used = false;
-        let measuredAtLocal = '';
-        for (const reading of latest.data.results) {
-          const sensor = loc.sensors.find((s) => s.id === reading.sensorsId);
-          const pollutant = sensor ? PARAMETER_MAP[sensor.parameter.name] : undefined;
-          if (!sensor || !pollutant || reading.value === null || reading.value < 0) continue;
-          if (!isFresh(reading.datetime.utc)) continue;
-          const units = effectiveUnits(loc.provider?.name, pollutant, sensor.parameter.units);
-          const value = toMicrograms(reading.value, units, pollutant);
-          if (value === null) continue;
-          const slot = (sums[pollutant] ??= { total: 0, count: 0 });
-          slot.total += value;
-          slot.count += 1;
-          used = true;
-          if (reading.datetime.local > measuredAtLocal) measuredAtLocal = reading.datetime.local;
-        }
-        if (used) {
-          stations.push({
-            name: loc.name ?? `Station ${loc.id}`,
-            distanceKm: Math.round(distanceKm * 10) / 10,
-            measuredAtLocal: measuredAtLocal.slice(0, 16),
-          });
-        }
-      }
-
-      const concentrations: Concentrations = {};
-      for (const [pollutant, slot] of Object.entries(sums) as [
-        PollutantId,
-        { total: number; count: number },
-      ][]) {
-        concentrations[pollutant] = Math.round((slot.total / slot.count) * 10) / 10;
-      }
-      if (
-        stations.length === 0 ||
-        (concentrations.pm2_5 === undefined && concentrations.pm10 === undefined)
-      ) {
-        return null;
-      }
-      return { provider: 'OpenAQ', stations, concentrations };
+      const locations = locationsSchema.safeParse(await get(locationsUrl(latitude, longitude)));
+      if (!locations.success) throw unavailable('openaq: schema');
+      const nearest = nearestStations(
+        locations.data.results,
+        { latitude, longitude },
+        isFresh,
+      ).slice(0, maxStations);
+      return snapshot(nearest, await readLatest(get, nearest), isFresh);
     },
   };
 }

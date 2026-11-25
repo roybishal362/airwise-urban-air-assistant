@@ -36,9 +36,17 @@ export function createLogger(level: LogLevel = 'info'): Logger {
     else console.log(line);
   };
   return {
-    debug: (m, f) => write('debug', m, f),
-    info: (m, f) => write('info', m, f),
-    warn: (m, f) => write('warn', m, f),
-    error: (m, f) => write('error', m, f),
+    debug: (m, f) => {
+      write('debug', m, f);
+    },
+    info: (m, f) => {
+      write('info', m, f);
+    },
+    warn: (m, f) => {
+      write('warn', m, f);
+    },
+    error: (m, f) => {
+      write('error', m, f);
+    },
   };
 }

@@ -128,70 +128,92 @@ export interface OpenMeteoOptions {
   retries?: number;
 }
 
+/** Forecast URL for a point; timestamps come back in the place's local time. */
+function pointUrl(
+  base: string,
+  latitude: number,
+  longitude: number,
+  params: Record<string, string>,
+): URL {
+  const url = new URL(base);
+  url.searchParams.set('latitude', latitude.toFixed(4));
+  url.searchParams.set('longitude', longitude.toFixed(4));
+  url.searchParams.set('timezone', 'auto');
+  for (const [key, value] of Object.entries(params)) url.searchParams.set(key, value);
+  return url;
+}
+
+const valueAt = (values: (number | null)[] | undefined, i: number): number | null =>
+  values?.[i] ?? null;
+
+function toAirSnapshot(data: z.infer<typeof airSchema>): AirSnapshot {
+  const { hourly } = data;
+  return {
+    timezone: data.timezone,
+    currentTime: data.current.time,
+    current: toConcentrations(data.current),
+    hourly: hourly.time.map((time, i) => ({
+      time,
+      concentrations: toConcentrations({
+        pm10: valueAt(hourly.pm10, i),
+        pm2_5: valueAt(hourly.pm2_5, i),
+        carbon_monoxide: valueAt(hourly.carbon_monoxide, i),
+        nitrogen_dioxide: valueAt(hourly.nitrogen_dioxide, i),
+        sulphur_dioxide: valueAt(hourly.sulphur_dioxide, i),
+        ozone: valueAt(hourly.ozone, i),
+      }),
+    })),
+  };
+}
+
+function toWeatherSnapshot(data: z.infer<typeof weatherSchema>): WeatherSnapshot {
+  const { hourly } = data;
+  const hours: HourlyWeather[] = hourly.time.map((time, i) => ({
+    time,
+    temperatureC: valueAt(hourly.temperature_2m, i),
+    humidityPct: valueAt(hourly.relative_humidity_2m, i),
+    windKmh: valueAt(hourly.wind_speed_10m, i),
+    boundaryLayerM: valueAt(hourly.boundary_layer_height, i),
+  }));
+  return { timezone: data.timezone, hourly: hours };
+}
+
+function toPlaces(data: z.infer<typeof geocodingSchema>): GeoLocation[] {
+  return (data.results ?? []).map((r) => ({
+    name: r.name,
+    latitude: r.latitude,
+    longitude: r.longitude,
+    country: r.country,
+    countryCode: r.country_code,
+    region: r.admin1,
+    timezone: r.timezone,
+  }));
+}
+
 export function createOpenMeteoClient({
   fetchFn = fetch,
   timeoutMs,
   retries = 1,
 }: OpenMeteoOptions): OpenMeteoClient {
-  const coordinates = (url: URL, latitude: number, longitude: number): void => {
-    url.searchParams.set('latitude', latitude.toFixed(4));
-    url.searchParams.set('longitude', longitude.toFixed(4));
-    url.searchParams.set('timezone', 'auto');
-  };
-
+  const get = (url: URL) => fetchJson(url, fetchFn, { timeoutMs, retries });
+  const forecast = { forecast_days: '2' };
   return {
     async getAirQuality(latitude, longitude) {
-      const url = new URL(OPEN_METEO_HOSTS.airQuality);
-      coordinates(url, latitude, longitude);
-      url.searchParams.set('current', AIR_VARIABLES.join(','));
-      url.searchParams.set('hourly', AIR_VARIABLES.join(','));
-      url.searchParams.set('forecast_days', '2');
-      const data = parse(
-        airSchema,
-        await fetchJson(url, fetchFn, { timeoutMs, retries }),
-        'air-quality API',
-      );
-
-      const { hourly } = data;
-      const at = (values: (number | null)[] | undefined, i: number): number | null =>
-        values?.[i] ?? null;
-      return {
-        timezone: data.timezone,
-        currentTime: data.current.time,
-        current: toConcentrations(data.current),
-        hourly: hourly.time.map((time, i) => ({
-          time,
-          concentrations: toConcentrations({
-            pm10: at(hourly.pm10, i),
-            pm2_5: at(hourly.pm2_5, i),
-            carbon_monoxide: at(hourly.carbon_monoxide, i),
-            nitrogen_dioxide: at(hourly.nitrogen_dioxide, i),
-            sulphur_dioxide: at(hourly.sulphur_dioxide, i),
-            ozone: at(hourly.ozone, i),
-          }),
-        })),
-      };
+      const variables = AIR_VARIABLES.join(',');
+      const url = pointUrl(OPEN_METEO_HOSTS.airQuality, latitude, longitude, {
+        current: variables,
+        hourly: variables,
+        ...forecast,
+      });
+      return toAirSnapshot(parse(airSchema, await get(url), 'air-quality API'));
     },
 
     async getWeather(latitude, longitude) {
-      const url = new URL(OPEN_METEO_HOSTS.weather);
-      coordinates(url, latitude, longitude);
-      url.searchParams.set('hourly', WEATHER_VARIABLES.join(','));
-      url.searchParams.set('forecast_days', '2');
-      const data = parse(
-        weatherSchema,
-        await fetchJson(url, fetchFn, { timeoutMs, retries }),
-        'weather API',
-      );
-      const { hourly } = data;
-      const hours: HourlyWeather[] = hourly.time.map((time, i) => ({
-        time,
-        temperatureC: hourly.temperature_2m?.[i] ?? null,
-        humidityPct: hourly.relative_humidity_2m?.[i] ?? null,
-        windKmh: hourly.wind_speed_10m?.[i] ?? null,
-        boundaryLayerM: hourly.boundary_layer_height?.[i] ?? null,
-      }));
-      return { timezone: data.timezone, hourly: hours };
+      const url = pointUrl(OPEN_METEO_HOSTS.weather, latitude, longitude, {
+        hourly: WEATHER_VARIABLES.join(','),
+        ...forecast,
+      });
+      return toWeatherSnapshot(parse(weatherSchema, await get(url), 'weather API'));
     },
 
     async searchPlaces(query) {
@@ -200,20 +222,7 @@ export function createOpenMeteoClient({
       url.searchParams.set('count', '5');
       url.searchParams.set('language', 'en');
       url.searchParams.set('format', 'json');
-      const data = parse(
-        geocodingSchema,
-        await fetchJson(url, fetchFn, { timeoutMs, retries }),
-        'geocoding API',
-      );
-      return (data.results ?? []).map((r) => ({
-        name: r.name,
-        latitude: r.latitude,
-        longitude: r.longitude,
-        country: r.country,
-        countryCode: r.country_code,
-        region: r.admin1,
-        timezone: r.timezone,
-      }));
+      return toPlaces(parse(geocodingSchema, await get(url), 'geocoding API'));
     },
   };
 }

@@ -91,9 +91,10 @@ export function describeQuantity(q: Quantity): string {
   return parts.length > 0 ? `${parts.join(', ')} per year` : 'not quantified';
 }
 
-/** A compact, model-friendly projection of the brief (~9 KB of JSON, roughly 2–3k tokens). */
-export function briefToContext(brief: AirBrief, household: Household): string {
-  const facts = {
+/** The air: what is measured now, the next 24 hours and the smog trap. */
+function airFacts(brief: AirBrief) {
+  const { windows } = brief.forecast;
+  return {
     place: brief.location.name,
     dataSource: brief.dataSource.label,
     localTime: brief.observedAt,
@@ -110,14 +111,20 @@ export function briefToContext(brief: AirBrief, household: Household): string {
     trend: brief.forecast.trend,
     next24hEvery3h: brief.forecast.hours
       .filter((_, i) => i % 3 === 0)
-      .map((h) => `${h.time.slice(11, 16)} ${h.aqi}`),
+      .map((h) => `${h.time.slice(11, 16)} ${String(h.aqi)}`),
     windows: {
-      cleanestHourForExercise: windowText(brief.forecast.windows.outdoor, brief.observedAt),
-      bestToAirTheHome: windowText(brief.forecast.windows.ventilation, brief.observedAt),
-      childrensPlay: windowText(brief.forecast.windows.play, brief.observedAt),
-      worstPeriod: windowText(brief.forecast.windows.worst, brief.observedAt),
+      cleanestHourForExercise: windowText(windows.outdoor, brief.observedAt),
+      bestToAirTheHome: windowText(windows.ventilation, brief.observedAt),
+      childrensPlay: windowText(windows.play, brief.observedAt),
+      worstPeriod: windowText(windows.worst, brief.observedAt),
     },
     smog: { trapRisk: brief.smog.trapRisk, explanation: brief.smog.explanation },
+  };
+}
+
+/** This family's risk, routine, home and commute. */
+function familyFacts(brief: AirBrief, household: Household) {
+  return {
     household: householdFacts(household),
     familyRisk: {
       verdict: brief.risk.verdict,
@@ -136,20 +143,34 @@ export function briefToContext(brief: AirBrief, household: Household): string {
     commute: brief.commute
       ? { current: brief.commute.current, alternatives: brief.commute.alternatives.slice(0, 4) }
       : 'does not commute',
+  };
+}
+
+/** Emergency number and local anti-smog rules (Delhi-NCR GRAP). */
+function localFacts(brief: AirBrief) {
+  const { policy } = brief;
+  return {
     emergencyNumber: brief.region.emergencyNumber,
-    localSmogRules: brief.policy
+    localSmogRules: policy
       ? {
-          plan: brief.policy.name,
-          stage: brief.policy.stageLabel,
-          whatItMeansForThisFamily: brief.policy.forYou,
-          note: brief.policy.note,
+          plan: policy.name,
+          stage: policy.stageLabel,
+          whatItMeansForThisFamily: policy.forYou,
+          note: policy.note,
         }
       : null,
+  };
+}
+
+/** Impact of greener choices, as unit-explicit strings so the model cannot mix up g and kg. */
+function impactFacts(brief: AirBrief) {
+  const { community } = brief;
+  return {
     communityHeadline: {
-      households: brief.community.households,
-      perHouseholdPerYear: describeQuantity({ ...brief.community.perHousehold, noxGPerYear: null }),
-      allHouseholdsPerYear: describeQuantity({ ...brief.community.total, noxGPerYear: null }),
-      treesEquivalent: brief.community.treesEquivalent,
+      households: community.households,
+      perHouseholdPerYear: describeQuantity({ ...community.perHousehold, noxGPerYear: null }),
+      allHouseholdsPerYear: describeQuantity({ ...community.total, noxGPerYear: null }),
+      treesEquivalent: community.treesEquivalent,
     },
     sustainableActions: brief.actions.map((a) => ({
       action: a.title,
@@ -158,7 +179,16 @@ export function briefToContext(brief: AirBrief, household: Household): string {
       allHouseholdsPerYear: describeQuantity(a.community),
     })),
   };
-  return JSON.stringify(facts);
+}
+
+/** A compact, model-friendly projection of the brief (~9 KB of JSON, roughly 2–3k tokens). */
+export function briefToContext(brief: AirBrief, household: Household): string {
+  return JSON.stringify({
+    ...airFacts(brief),
+    ...familyFacts(brief, household),
+    ...localFacts(brief),
+    ...impactFacts(brief),
+  });
 }
 
 /** Build the provider-neutral conversation: trimmed history + grounded question. */
