@@ -15,6 +15,10 @@ how many families use it.
   checked by [`tests/integration/vercel.test.ts`](tests/integration/vercel.test.ts)).
 - **Measured on the live site** (Chrome, India → Mumbai region): 8 requests on a first visit (6 files + 2 API calls,
   down from 31 before the build step); on a repeat visit only the 300-byte HTML check goes to the network.
+- **Lighthouse on the live site** (25 Nov 2026, Lighthouse 12): **100 / 100 / 100 / 100** (Performance,
+  Accessibility, Best Practices, SEO) on both mobile and desktop. Mobile: first and largest contentful paint
+  1.3 s, total blocking time 0 ms, layout shift 0. Reproduce with
+  `npx lighthouse https://airwise-urban-air-assistant.vercel.app/`.
 - **No layout work in JavaScript:** charts are small inline SVGs and the gauge needle rotates with a CSS custom
   property; nothing is drawn on a canvas or polled on a timer.
 
