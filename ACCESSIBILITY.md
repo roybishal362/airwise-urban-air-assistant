@@ -5,13 +5,14 @@ older relatives who prefer listening to reading, so accessibility is part of the
 
 ## How it is verified
 
-| Check                    | How                                                                                                                                         | Where                                                       |
-| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------- |
-| Automated WCAG audit     | axe-core on the empty page and on the fully rendered plan: **0 violations**, plus a self-test proving the audit catches a planted violation | `tests/frontend/dom.test.ts`                                |
-| Colour contrast          | Every text/background token pair ≥ 4.5:1 and every UI element ≥ 3:1, in light and dark themes; every AQI category colour pair               | `tests/frontend/contrast.test.ts`, `tests/unit/aqi.test.ts` |
-| Keyboard and focus       | ARIA tabs (roving tabindex, Arrow/Home/End, wrap-around), focus moves after search and on errors, Enter/Shift+Enter in chat                 | `tests/frontend/tabs.test.ts`, `app.test.ts`, `dom.test.ts` |
-| Error handling for forms | Invalid fields get `aria-invalid`, are linked to their message with `aria-describedby` and receive focus                                    | `tests/frontend/app.test.ts`                                |
-| Manual checks            | In Chrome on the live app: the keyboard flow through search, tabs and chat, and reflow at 320 px                                            | live app                                                    |
+| Check                    | How                                                                                                                                         | Where                                                            |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
+| Lighthouse (live site)   | Accessibility **100** on mobile and desktop (25 Nov 2026)                                                                                   | `npx lighthouse https://airwise-urban-air-assistant.vercel.app/` |
+| Automated WCAG audit     | axe-core on the empty page and on the fully rendered plan: **0 violations**, plus a self-test proving the audit catches a planted violation | `tests/frontend/dom.test.ts`                                     |
+| Colour contrast          | Every text/background token pair ≥ 4.5:1 and every UI element ≥ 3:1, in light and dark themes; every AQI category colour pair               | `tests/frontend/contrast.test.ts`, `tests/unit/aqi.test.ts`      |
+| Keyboard and focus       | ARIA tabs (roving tabindex, Arrow/Home/End, wrap-around), focus moves after search and on errors, Enter/Shift+Enter in chat                 | `tests/frontend/tabs.test.ts`, `app.test.ts`, `dom.test.ts`      |
+| Error handling for forms | Invalid fields get `aria-invalid`, are linked to their message with `aria-describedby` and receive focus                                    | `tests/frontend/app.test.ts`                                     |
+| Manual checks            | In Chrome on the live app: the keyboard flow through search, tabs and chat, and reflow at 320 px                                            | live app                                                         |
 
 ## What a user gets
 

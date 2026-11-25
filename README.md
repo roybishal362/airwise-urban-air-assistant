@@ -20,7 +20,7 @@ and how the GenAI is grounded in measured data)
 | --------------------------- | -------------------------------------------- | --------------------------------------------------------------------- |
 | Code quality                | [CODE_QUALITY.md](CODE_QUALITY.md)           | `npm run lint` (typed ESLint + SonarJS + limits), `npm run typecheck` |
 | Security                    | [SECURITY.md](SECURITY.md)                   | integration tests, CodeQL, `npm audit` (0 vulnerabilities)            |
-| Efficiency                  | [EFFICIENCY.md](EFFICIENCY.md)               | `npm run build` (27.3 KB gzipped UI), cache tests                     |
+| Efficiency                  | [EFFICIENCY.md](EFFICIENCY.md)               | Lighthouse 100 (live), `npm run build` (27.3 KB gzipped UI)           |
 | Testing                     | [TESTING.md](TESTING.md)                     | `npm run test:coverage` (410 tests, 100 % lines)                      |
 | Accessibility               | [ACCESSIBILITY.md](ACCESSIBILITY.md)         | axe-core (0 violations) and contrast tests                            |
 | Problem statement alignment | [PROBLEM_ALIGNMENT.md](PROBLEM_ALIGNMENT.md) | every requirement mapped to code and tests                            |
@@ -324,6 +324,8 @@ See [`SECURITY.md`](SECURITY.md) for the full threat model. Highlights:
   `npm run build` runs [`scripts/build-web.ts`](scripts/build-web.ts) (esbuild): one minified JS bundle and one
   minified CSS file with content-hashed names, and the HTML rewritten to use them. The whole UI is **3 files,
   27.3 KB gzipped** (HTML 7.6, JS 13.8, CSS 5.9).
+- **Lighthouse on the live site** (25 Nov 2026): **100** for Performance, Accessibility, Best Practices and SEO, on
+  mobile and desktop.
 - **Cache once, then never again:** hashed `/assets/` files are cached for a year (`immutable`), since a deploy changes
   their names; only the HTML is revalidated. Icons and the manifest are cached for a day.
 - **Measured on the live site** (Chrome, India → Mumbai, 24 Nov 2026):
